@@ -1,4 +1,4 @@
-import { Injectable, ConflictException } from '@nestjs/common';
+import { Injectable, ConflictException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -17,6 +17,17 @@ export class UsersService {
 
     async remove(id: string, currentUserId?: string, ipAddress?: string, location?: string) {
         const user = await this.prisma.user.findUnique({ where: { id } });
+
+        // Admin Protection: Prevent deleting the last Admin
+        if (user && user.role === Role.ADMIN) {
+            const adminCount = await this.prisma.user.count({
+                where: { role: Role.ADMIN }
+            });
+            if (adminCount <= 1) {
+                throw new BadRequestException('Cannot delete the last Administrator account.');
+            }
+        }
+
         if (user && user.avatarUrl) {
             await this.uploadService.deleteFile(user.avatarUrl);
         }
@@ -47,6 +58,16 @@ export class UsersService {
 
         if (data.password) {
             data.password = await bcrypt.hash(data.password, 10);
+        }
+
+        // Admin Protection: Prevent downgrading the last Admin
+        if (user && user.role === Role.ADMIN && data.role && data.role !== Role.ADMIN) {
+            const adminCount = await this.prisma.user.count({
+                where: { role: Role.ADMIN }
+            });
+            if (adminCount <= 1) {
+                throw new BadRequestException('Cannot change the role of the last Administrator.');
+            }
         }
 
         const updatedUser = await this.prisma.user.update({

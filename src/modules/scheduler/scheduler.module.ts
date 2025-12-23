@@ -3,9 +3,10 @@ import { SyncSchedulerService } from './sync-scheduler.service';
 import { PropertiesModule } from '../properties/properties.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { AgentsModule } from '../agents/agents.module';
 
 @Module({
-    imports: [PropertiesModule, IntegrationsModule, PrismaModule],
+    imports: [PropertiesModule, IntegrationsModule, PrismaModule, AgentsModule],
     providers: [SyncSchedulerService],
     exports: [SyncSchedulerService],
 })

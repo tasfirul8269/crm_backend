@@ -379,3 +379,17 @@ model Notification {
   createdAt DateTime @default(now())
 }
 
+// Property Finder Location Cache
+// Stores location ID-to-name mappings to avoid repeated API calls
+model PfLocation {
+  id        Int      @id  // Property Finder's location ID (not auto-generated)
+  name      String        // Location name (e.g., "Dubai Marina")
+  path      String        // Full path (e.g., "Dubai > Dubai Marina")
+  type      String?       // Location type (CITY, COMMUNITY, BUILDING)
+  lat       Float?        // Latitude
+  lng       Float?        // Longitude
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+

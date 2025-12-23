@@ -6,9 +6,10 @@ import { UploadModule } from '../upload/upload.module';
 import { PropertyFinderModule } from '../property-finder/property-finder.module';
 import { ActivityModule } from '../activity/activity.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
+import { PfLocationModule } from '../pf-location/pf-location.module';
 
 @Module({
-    imports: [PrismaModule, UploadModule, PropertyFinderModule, ActivityModule, IntegrationsModule],
+    imports: [PrismaModule, UploadModule, PropertyFinderModule, ActivityModule, IntegrationsModule, PfLocationModule],
     controllers: [PropertiesController],
     providers: [PropertiesService],
     exports: [PropertiesService],

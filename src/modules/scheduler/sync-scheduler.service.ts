@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { IntegrationsService } from '../integrations/integrations.service';
 import { PropertiesService } from '../properties/properties.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AgentsService } from '../agents/agents.service';
 
 @Injectable()
 export class SyncSchedulerService {
@@ -12,6 +13,7 @@ export class SyncSchedulerService {
         private integrationsService: IntegrationsService,
         private propertiesService: PropertiesService,
         private prisma: PrismaService,
+        private agentsService: AgentsService,
     ) { }
 
     @Cron(CronExpression.EVERY_MINUTE)
@@ -66,6 +68,14 @@ export class SyncSchedulerService {
 
             await this.createNotification('SUCCESS', 'Auto Sync Completed', message);
             this.logger.log(message);
+
+            // Sync Agents
+            this.logger.log('Starting Agent Sync...');
+            const agentSyncResult = await this.agentsService.syncFromPropertyFinder();
+            const agentMessage = `Agent Sync completed. ${agentSyncResult.message}`;
+            this.logger.log(agentMessage);
+            await this.createNotification('SUCCESS', 'Agent Sync Completed', agentMessage);
+
         } catch (error) {
             this.logger.error('Scheduled Sync Failed', error);
             await this.createNotification('ERROR', 'Auto Sync Failed', `An error occurred during auto sync: ${error.message}`);
