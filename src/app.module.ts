@@ -20,6 +20,9 @@ import { SchedulerModule } from './modules/scheduler/scheduler.module';
 
 import { UploadModule } from './modules/upload/upload.module';
 import { DraftsModule } from './modules/properties/drafts/drafts.module';
+import { NocModule } from './modules/noc/noc.module';
+import { AiModule } from './modules/ai/ai.module';
+
 
 @Module({
   imports: [
@@ -43,6 +46,8 @@ import { DraftsModule } from './modules/properties/drafts/drafts.module';
     SchedulerModule,
     UploadModule,
     DraftsModule,
+    NocModule,
+    AiModule,
   ],
   controllers: [AppController],
   providers: [AppService],

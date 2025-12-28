@@ -415,4 +415,81 @@ model PfLocation {
   updatedAt DateTime @updatedAt
 }
 
+// NOC (No Objection Certificate) for property listings
+model Noc {
+  id                  String    @id @default(cuid())
+  
+  // Owners Relation
+  owners              NocOwner[]
 
+  
+  // Property Details
+  propertyType        String?
+  buildingProjectName String?
+  community           String?
+  streetName          String?
+  buildUpArea         Float?
+  plotArea            Float?
+  bedrooms            Int?
+  bathrooms           Int?
+  rentalAmount        Float?
+  saleAmount          Float?
+  parking             String?
+  
+  // Terms and Conditions
+  agreementType       String?   // 'exclusive' | 'non-exclusive'
+  periodMonths        Int?      // 1, 2, 3, or 6
+  agreementDate       DateTime?
+  
+  // Generated PDF - stored in S3
+  pdfUrl              String?
+  
+  // Metadata
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+}
+
+// AI Settings for property description and title generation
+model AiSettings {
+  id                  String    @id @default(cuid())
+  minCharacters       Int       @default(750)
+  maxCharacters       Int       @default(2000)
+  minTitleCharacters  Int       @default(30)
+  maxTitleCharacters  Int       @default(100)
+  isEnabled           Boolean   @default(true)
+  modelName           String    @default("gemini-2.5-flash")
+  
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+}
+
+// AI Training Examples for style learning
+model AiTrainingExample {
+  id                  String    @id @default(cuid())
+  type                String    @default("description") // "description" or "title"
+  title               String?   // Optional title/label for the example
+  description         String    // The example property description or title
+  isActive            Boolean   @default(true)
+  
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+}
+
+model NocOwner {
+  id              String    @id @default(cuid())
+  nocId           String
+  noc             Noc       @relation(fields: [nocId], references: [id], onDelete: Cascade)
+  
+  name            String?
+  emiratesId      String?
+  issueDate       DateTime?
+  expiryDate      DateTime?
+  countryCode     String?
+  phone           String?
+  
+  signatureUrl    String?
+  signatureDate   DateTime?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}

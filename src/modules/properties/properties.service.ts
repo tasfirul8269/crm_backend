@@ -259,121 +259,99 @@ export class PropertiesService {
         const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         const lastMonth = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-        // DEBUG LOGGING
-        const debugCounts = await Promise.all([
-            this.prisma.property.count(),
-            this.prisma.property.count({ where: { isActive: true } }),
-            this.prisma.property.count({ where: { status: 'AVAILABLE' } }),
-            this.prisma.property.findMany({ select: { id: true, isActive: true, status: true, propertyTitle: true } })
-        ]);
-        console.log('--- DASHBOARD STATS DEBUG ---');
-        console.log('Total Properties:', debugCounts[0]);
-        console.log('Active Properties:', debugCounts[1]);
-        console.log('Available Properties:', debugCounts[2]);
-        console.log('Detailed Properties:', JSON.stringify(debugCounts[3], null, 2));
-        console.log('-----------------------------');
+        try {
+            // Sequential execution for stability
+            // 1. Active Counts
+            const activeProperties = await this.prisma.property.count({ where: { isActive: true } });
+            const activePropertiesNew = await this.prisma.property.count({ where: { isActive: true, createdAt: { gte: lastWeek } } });
 
-        const [activeProperties, activePropertiesNew, activeOffPlan, activeOffPlanNew] = await Promise.all([
-            this.prisma.property.count({
-                where: { isActive: true }
-            }),
-            this.prisma.property.count({
-                where: { isActive: true, createdAt: { gte: lastWeek } }
-            }),
-            this.prisma.offPlanProperty.count({
-                where: { isActive: true }
-            }),
-            this.prisma.offPlanProperty.count({
-                where: { isActive: true, createdAt: { gte: lastWeek } }
-            })
-        ]);
+            const activeOffPlan = await this.prisma.offPlanProperty.count({ where: { isActive: true } });
+            const activeOffPlanNew = await this.prisma.offPlanProperty.count({ where: { isActive: true, createdAt: { gte: lastWeek } } });
 
-        const activeTotal = activeProperties + activeOffPlan;
-        const activeNew = activePropertiesNew + activeOffPlanNew;
+            const activeTotal = activeProperties + activeOffPlan;
+            const activeNew = activePropertiesNew + activeOffPlanNew;
 
-        const [offPlanTotal, offPlanNew] = await Promise.all([
-            this.prisma.offPlanProperty.count(),
-            this.prisma.offPlanProperty.count({ where: { createdAt: { gte: lastWeek } } })
-        ]);
+            // 2. OffPlan Total
+            const offPlanTotal = await this.prisma.offPlanProperty.count();
+            const offPlanNew = await this.prisma.offPlanProperty.count({ where: { createdAt: { gte: lastWeek } } });
 
-        const [soldTotal, soldNew] = await Promise.all([
-            this.prisma.property.count({ where: { status: 'SOLD' } }),
-            this.prisma.property.count({ where: { status: 'SOLD', updatedAt: { gte: lastMonth } } })
-        ]);
+            // 3. Sold
+            const soldTotal = await this.prisma.property.count({ where: { status: 'SOLD' } });
+            const soldNew = await this.prisma.property.count({ where: { status: 'SOLD', updatedAt: { gte: lastMonth } } });
 
-        const [rentTotal, rentNew] = await Promise.all([
-            this.prisma.property.count({
+            // 4. Rent
+            const rentTotal = await this.prisma.property.count({
                 where: {
                     isActive: true,
                     purpose: { in: ['rent', 'Rent', 'RENT'] }
                 }
-            }),
-            this.prisma.property.count({
+            });
+            const rentNew = await this.prisma.property.count({
                 where: {
                     isActive: true,
                     purpose: { in: ['rent', 'Rent', 'RENT'] },
                     createdAt: { gte: lastMonth }
                 }
-            })
-        ]);
+            });
 
-        const [buyTotal, buyNew] = await Promise.all([
-            this.prisma.property.count({
+            // 5. Buy
+            const buyTotal = await this.prisma.property.count({
                 where: {
                     isActive: true,
                     purpose: { in: ['sale', 'Sale', 'SALE', 'buy', 'Buy', 'BUY'] }
                 }
-            }),
-            this.prisma.property.count({
+            });
+            const buyNew = await this.prisma.property.count({
                 where: {
                     isActive: true,
                     purpose: { in: ['sale', 'Sale', 'SALE', 'buy', 'Buy', 'BUY'] },
                     createdAt: { gte: lastMonth }
                 }
-            })
-        ]);
+            });
 
-        const [residentialTotal, residentialNew] = await Promise.all([
-            this.prisma.property.count({
+            // 6. Residential
+            const residentialTotal = await this.prisma.property.count({
                 where: {
                     isActive: true,
                     category: { equals: 'residential', mode: 'insensitive' }
                 }
-            }),
-            this.prisma.property.count({
+            });
+            const residentialNew = await this.prisma.property.count({
                 where: {
                     isActive: true,
                     category: { equals: 'residential', mode: 'insensitive' },
                     createdAt: { gte: lastMonth }
                 }
-            })
-        ]);
+            });
 
-        const [commercialTotal, commercialNew] = await Promise.all([
-            this.prisma.property.count({
+            // 7. Commercial
+            const commercialTotal = await this.prisma.property.count({
                 where: {
                     isActive: true,
                     category: { equals: 'commercial', mode: 'insensitive' }
                 }
-            }),
-            this.prisma.property.count({
+            });
+            const commercialNew = await this.prisma.property.count({
                 where: {
                     isActive: true,
                     category: { equals: 'commercial', mode: 'insensitive' },
                     createdAt: { gte: lastMonth }
                 }
-            })
-        ]);
+            });
 
-        return {
-            active: { count: activeTotal, trend: activeNew },
-            offPlan: { count: offPlanTotal, trend: offPlanNew },
-            sold: { count: soldTotal, trend: soldNew },
-            rent: { count: rentTotal, trend: rentNew },
-            buy: { count: buyTotal, trend: buyNew },
-            residential: { count: residentialTotal, trend: residentialNew },
-            commercial: { count: commercialTotal, trend: commercialNew }
-        };
+            return {
+                active: { count: activeTotal, trend: activeNew },
+                offPlan: { count: offPlanTotal, trend: offPlanNew },
+                sold: { count: soldTotal, trend: soldNew },
+                rent: { count: rentTotal, trend: rentNew },
+                buy: { count: buyTotal, trend: buyNew },
+                residential: { count: residentialTotal, trend: residentialNew },
+                commercial: { count: commercialTotal, trend: commercialNew }
+            };
+        } catch (error) {
+            this.logger.error('Error fetching dashboard stats', error);
+            throw new HttpException('Failed to fetch dashboard stats', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 
     async getRevenueTendency() {
