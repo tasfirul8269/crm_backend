@@ -268,7 +268,49 @@ export class AgentsService {
             throw new NotFoundException(`Agent with ID ${id} not found`);
         }
 
-        return agent;
+        // Fetch counts
+        const [assignedPropertiesCount, projectExpertCount, offPlanProperties] = await Promise.all([
+            // Standard properties assigned to agent
+            this.prisma.property.count({
+                where: { assignedAgentId: id }
+            }),
+            // Off-plan properties where agent is project expert
+            this.prisma.offPlanProperty.count({
+                where: {
+                    projectExperts: {
+                        has: id
+                    }
+                }
+            }),
+            // Fetch off-plan to filter area experts
+            this.prisma.offPlanProperty.findMany({
+                select: {
+                    areaExperts: true
+                }
+            })
+        ]);
+
+        // Filter area experts in memory
+        let areaExpertCount = 0;
+        offPlanProperties.forEach(prop => {
+            const experts = prop.areaExperts as Record<string, string[]>;
+            if (experts) {
+                const isExpert = Object.values(experts).some(agentIds =>
+                    Array.isArray(agentIds) && agentIds.includes(id)
+                );
+                if (isExpert) areaExpertCount++;
+            }
+        });
+
+        return {
+            ...agent,
+            _count: {
+                properties: assignedPropertiesCount,
+                offPlanProjectExpert: projectExpertCount,
+                offPlanAreaExpert: areaExpertCount,
+                totalAssigned: assignedPropertiesCount + projectExpertCount + areaExpertCount
+            }
+        };
     }
 
     async update(id: string, updateAgentDto: UpdateAgentDto, photoUrl?: string, vcardUrl?: string, licenseDocumentUrl?: string, userId?: string, ipAddress?: string, location?: string) {

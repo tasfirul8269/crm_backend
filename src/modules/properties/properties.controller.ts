@@ -69,7 +69,12 @@ export class PropertiesController {
             return Array.isArray(val) ? val : [val];
         };
 
-        const agentIds = getArrayParam('agentIds');
+        let agentIds = getArrayParam('agentIds');
+
+        // If query.agentIds is a string (not an array and not using []), handle it
+        if (!agentIds && query.agentIds) {
+            agentIds = typeof query.agentIds === 'string' ? [query.agentIds] : query.agentIds;
+        }
         const propertyTypes = getArrayParam('propertyTypes');
 
         return this.propertiesService.findAll({
