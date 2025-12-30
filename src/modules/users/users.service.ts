@@ -6,6 +6,7 @@ import * as bcrypt from 'bcrypt';
 import { Role } from '@prisma/client';
 import { UploadService } from '../upload/upload.service';
 import { ActivityService } from '../activity/activity.service';
+import { FileManagerService } from '../file-manager/file-manager.service';
 
 @Injectable()
 export class UsersService {
@@ -13,6 +14,7 @@ export class UsersService {
         private prisma: PrismaService,
         private uploadService: UploadService,
         private activityService: ActivityService,
+        private fileManagerService: FileManagerService,
     ) { }
 
     async remove(id: string, currentUserId?: string, ipAddress?: string, location?: string) {
@@ -75,6 +77,13 @@ export class UsersService {
             data,
         });
 
+        // Register new avatar in File Manager if updated
+        if (avatarUrl) {
+            this.fileManagerService.createUserFolder(updatedUser, avatarUrl).catch(e => {
+                console.error('Failed to update user avatar in file manager', e);
+            });
+        }
+
         if (currentUserId) {
             await this.activityService.create({
                 user: { connect: { id: currentUserId } },
@@ -115,6 +124,11 @@ export class UsersService {
                     avatarUrl: avatarUrl,
                     permissions: createUserDto.permissions || [],
                 },
+            });
+
+            // Create File Manager Structure
+            this.fileManagerService.createUserFolder(user, avatarUrl).catch(e => {
+                console.error('Failed to create user folder in file manager', e);
             });
 
             if (currentUserId) {

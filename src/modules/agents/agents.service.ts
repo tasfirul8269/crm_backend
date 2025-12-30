@@ -7,6 +7,7 @@ import { PropertyFinderService } from '../property-finder/property-finder.servic
 import { getCode } from 'country-list';
 
 import { ActivityService } from '../activity/activity.service';
+import { FileManagerService } from '../file-manager/file-manager.service';
 
 @Injectable()
 export class AgentsService {
@@ -16,6 +17,7 @@ export class AgentsService {
         private prisma: PrismaService,
         private propertyFinderService: PropertyFinderService,
         private activityService: ActivityService,
+        private fileManagerService: FileManagerService,
     ) { }
 
     async create(createAgentDto: CreateAgentDto, photoUrl?: string, vcardUrl?: string, licenseDocumentUrl?: string, userId?: string, ipAddress?: string, location?: string) {
@@ -58,6 +60,11 @@ export class AgentsService {
                 location,
             });
         }
+
+        // Create File Manager Folder
+        this.fileManagerService.createAgentFolder(createdAgent, photoUrl, vcardUrl, licenseDocumentUrl).catch(e => {
+            this.logger.error('Failed to create agent file folder', e);
+        });
 
         // Sync with Property Finder
         try {

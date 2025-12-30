@@ -22,6 +22,7 @@ import { UploadModule } from './modules/upload/upload.module';
 import { DraftsModule } from './modules/properties/drafts/drafts.module';
 import { NocModule } from './modules/noc/noc.module';
 import { AiModule } from './modules/ai/ai.module';
+import { FileManagerModule } from './modules/file-manager/file-manager.module';
 
 
 @Module({
@@ -47,7 +48,9 @@ import { AiModule } from './modules/ai/ai.module';
     UploadModule,
     DraftsModule,
     NocModule,
+    NocModule,
     AiModule,
+    FileManagerModule,
   ],
   controllers: [AppController],
   providers: [AppService],
