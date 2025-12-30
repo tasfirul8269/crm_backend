@@ -3,12 +3,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateOffPlanPropertyDto } from './dto/create-off-plan-property.dto';
 import { UpdateOffPlanPropertyDto } from './dto/update-off-plan-property.dto';
 import { ActivityService } from '../activity/activity.service';
+import { FileManagerService } from '../file-manager/file-manager.service';
 
 @Injectable()
 export class OffPlanPropertiesService {
     constructor(
         private prisma: PrismaService,
         private activityService: ActivityService,
+        private fileManagerService: FileManagerService,
     ) { }
 
     async create(createOffPlanPropertyDto: CreateOffPlanPropertyDto, userId?: string, ipAddress?: string, location?: string) {
@@ -40,6 +42,11 @@ export class OffPlanPropertiesService {
                 location,
             });
         }
+
+        // Create File Manager Structure
+        this.fileManagerService.createOffPlanStructure(property, createOffPlanPropertyDto).catch(e => {
+            console.error('Failed to create off-plan file manager structure', e);
+        });
 
         return property;
     }

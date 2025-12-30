@@ -4,6 +4,7 @@ import { CreateDeveloperDto } from './dto/create-developer.dto';
 import { UpdateDeveloperDto } from './dto/update-developer.dto';
 import { UploadService } from '../upload/upload.service';
 import { ActivityService } from '../activity/activity.service';
+import { FileManagerService } from '../file-manager/file-manager.service';
 
 @Injectable()
 export class DevelopersService {
@@ -11,6 +12,7 @@ export class DevelopersService {
         private prisma: PrismaService,
         private uploadService: UploadService,
         private activityService: ActivityService,
+        private fileManagerService: FileManagerService,
     ) { }
 
     async create(createDeveloperDto: CreateDeveloperDto, logoUrl?: string, salesManagerPhotoUrl?: string, userId?: string, ipAddress?: string, location?: string) {
@@ -32,6 +34,11 @@ export class DevelopersService {
                     location,
                 });
             }
+
+            // Create File Manager Folder
+            this.fileManagerService.createDeveloperFolder(developer, logoUrl, salesManagerPhotoUrl).catch(e => {
+                console.error('Failed to create developer file folder', e);
+            });
 
             return developer;
         } catch (error) {

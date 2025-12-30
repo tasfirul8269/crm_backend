@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UploadService } from '../upload/upload.service';
+import { FileManagerService } from '../file-manager/file-manager.service';
 import { CreateNocDto } from './dto/create-noc.dto';
 import PDFDocument from 'pdfkit';
 import axios from 'axios';
@@ -12,6 +13,7 @@ export class NocService {
     constructor(
         private prisma: PrismaService,
         private uploadService: UploadService,
+        private fileManagerService: FileManagerService,
     ) { }
 
     private safeDate(dateStr: string | null | undefined): Date | null {
@@ -93,6 +95,11 @@ export class NocService {
             where: { id: noc.id },
             data: { pdfUrl },
             include: { owners: true },
+        });
+
+        // Register in File Manager
+        this.fileManagerService.createNocFolder(updatedNoc, pdfUrl || undefined).catch(e => {
+            this.logger.error('Failed to register NOC in file manager', e);
         });
 
         return updatedNoc;

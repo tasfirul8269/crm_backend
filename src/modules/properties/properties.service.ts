@@ -5,6 +5,7 @@ import { UpdatePropertyDto } from './dto/update-property.dto';
 import { ActivityService } from '../activity/activity.service';
 import { PropertyFinderService } from '../property-finder/property-finder.service';
 import { IntegrationsService } from '../integrations/integrations.service';
+import { FileManagerService } from '../file-manager/file-manager.service';
 
 @Injectable()
 export class PropertiesService {
@@ -15,6 +16,7 @@ export class PropertiesService {
         private propertyFinderService: PropertyFinderService,
         private activityService: ActivityService,
         private integrationsService: IntegrationsService,
+        private fileManagerService: FileManagerService,
     ) { }
 
     async findAll(filters: {
@@ -658,8 +660,13 @@ export class PropertiesService {
         // Automatically sync to Property Finder (non-blocking)
         // Pass pfPublished intent
         this.syncToPropertyFinderOnCreate(property.id, pfPublished).catch((error) => {
-            this.logger.error(`Failed to auto-sync property ${property.id} to Property Finder`, error);
+            this.logger.error(`Failed to auto - sync property ${property.id} to Property Finder`, error);
             // Don't throw - property creation succeeded, sync failure is logged but doesn't block
+        });
+
+        // Create File Manager Structure (Auto)
+        this.fileManagerService.createPropertyStructure(property, fileUrls).catch(e => {
+            this.logger.error('Failed to create file manager structure', e);
         });
 
         return property;
@@ -762,7 +769,7 @@ export class PropertiesService {
         // Sync is now handled explicitly via the "Update to PF" button.
         /*
         this.syncToPropertyFinder(property.id, targetPublishState).catch((error) => {
-            this.logger.error(`Failed to auto-sync property ${property.id} on Update`, error);
+            this.logger.error(`Failed to auto - sync property ${ property.id } on Update`, error);
         });
         */
 
@@ -774,7 +781,7 @@ export class PropertiesService {
      * This is called asynchronously and errors are logged but don't fail property creation
      */
     private async syncToPropertyFinderOnCreate(propertyId: string, targetPublishState?: boolean) {
-        this.logger.warn(`*** INITIATING PF SYNC FOR PROPERTY ${propertyId} ***`);
+        this.logger.warn(`*** INITIATING PF SYNC FOR PROPERTY ${propertyId} *** `);
         try {
             const property = await this.prisma.property.findUnique({
                 where: { id: propertyId },
@@ -788,7 +795,7 @@ export class PropertiesService {
 
             // Skip if already synced
             if (property.pfListingId) {
-                this.logger.log(`Property ${propertyId} already has PF listing ID: ${property.pfListingId}`);
+                this.logger.log(`Property ${propertyId} already has PF listing ID: ${property.pfListingId} `);
                 return;
             }
 
@@ -801,7 +808,7 @@ export class PropertiesService {
             // 0. Use Explicit PF Location Code logic if available
             if (property.pfLocationId) {
                 locationId = property.pfLocationId;
-                this.logger.log(`Using explicit PF Location ID from input: ${locationId}`);
+                this.logger.log(`Using explicit PF Location ID from input: ${locationId} `);
             }
             // Fallback to legacy address search
             else if (property.address || property.emirate) {
@@ -833,7 +840,7 @@ export class PropertiesService {
                     }
 
                     if (!locationId) {
-                        this.logger.warn(`Could not find any matching location on PF for property ${propertyId}. Address: ${property.address}`);
+                        this.logger.warn(`Could not find any matching location on PF for property ${propertyId}.Address: ${property.address} `);
                     }
                 } catch (error) {
                     this.logger.warn(`Failed to find location for property ${propertyId}, continuing without location`, error);
@@ -855,7 +862,7 @@ export class PropertiesService {
                 },
             });
 
-            this.logger.log(`Successfully auto-synced property ${propertyId} to Property Finder with listing ID: ${pfListing.id}`);
+            this.logger.log(`Successfully auto - synced property ${propertyId} to Property Finder with listing ID: ${pfListing.id} `);
 
             // VERIFIED PUBLISH LOGIC (Create)
             if (targetPublishState !== undefined) {
@@ -880,18 +887,18 @@ export class PropertiesService {
 
             // ============ AUTOMATED VERIFICATION SUBMISSION ============
             try {
-                this.logger.log(`Checking verification eligibility for property ${propertyId} (Listing ID: ${pfListing.id})...`);
+                this.logger.log(`Checking verification eligibility for property ${propertyId}(Listing ID: ${pfListing.id})...`);
                 const eligibility = await this.propertyFinderService.checkVerificationEligibility(pfListing.id);
 
-                this.logger.log(`Eligibility result for ${propertyId}:`, eligibility);
+                this.logger.log(`Eligibility result for ${propertyId}: `, eligibility);
 
                 if (eligibility && eligibility.eligible && eligibility.autoSubmit) {
-                    this.logger.log(`Property ${propertyId} is eligible for auto-verification. Submitting...`);
+                    this.logger.log(`Property ${propertyId} is eligible for auto - verification.Submitting...`);
 
                     // We need agent's public profile ID for submission
                     if (agentPfId) {
                         const verification = await this.propertyFinderService.submitVerification(pfListing.id, agentPfId);
-                        this.logger.log(`Verification submitted successfully for ${propertyId}. Submission ID: ${verification.submissionId}`);
+                        this.logger.log(`Verification submitted successfully for ${propertyId}.Submission ID: ${verification.submissionId} `);
 
                         // Update local status to pending
                         await this.prisma.property.update({
@@ -902,7 +909,7 @@ export class PropertiesService {
                         this.logger.warn(`Cannot submit verification for ${propertyId}: Agent Public Profile ID missing.`);
                     }
                 } else {
-                    this.logger.log(`Property ${propertyId} is NOT eligible for auto-verification. Details:`, eligibility.helpDetails);
+                    this.logger.log(`Property ${propertyId} is NOT eligible for auto - verification.Details: `, eligibility.helpDetails);
                 }
             } catch (verError: any) {
                 this.logger.error(`Verification submission failed for ${propertyId}`, {
@@ -913,7 +920,7 @@ export class PropertiesService {
             }
 
         } catch (error: any) {
-            this.logger.error(`Failed to auto-sync property ${propertyId} to Property Finder`, {
+            this.logger.error(`Failed to auto - sync property ${propertyId} to Property Finder`, {
                 message: error.message,
                 status: error.response?.status,
                 data: JSON.stringify(error.response?.data || {}),
@@ -936,7 +943,7 @@ export class PropertiesService {
         if (userId) {
             await this.activityService.create({
                 user: { connect: { id: userId } },
-                action: `Updated Property Status to ${status}: ${property.propertyTitle || property.reference || id}`,
+                action: `Updated Property Status to ${status}: ${property.propertyTitle || property.reference || id} `,
                 ipAddress,
                 location,
             });
@@ -953,7 +960,7 @@ export class PropertiesService {
         if (userId) {
             await this.activityService.create({
                 user: { connect: { id: userId } },
-                action: `${isActive ? 'Activated' : 'Deactivated'} Property: ${property.propertyTitle || property.reference || id}`,
+                action: `${isActive ? 'Activated' : 'Deactivated'} Property: ${property.propertyTitle || property.reference || id} `,
                 ipAddress,
                 location,
             });
@@ -969,7 +976,7 @@ export class PropertiesService {
         if (userId) {
             await this.activityService.create({
                 user: { connect: { id: userId } },
-                action: `Deleted Property: ${property.propertyTitle || property.reference || id}`,
+                action: `Deleted Property: ${property.propertyTitle || property.reference || id} `,
                 ipAddress,
                 location,
             });
@@ -1069,7 +1076,7 @@ export class PropertiesService {
         }
 
         // Validate and prepare title (30-50 characters required by PF)
-        let titleEn = property.propertyTitle || `${property.propertyType || 'Property'} in ${property.address || 'UAE'}`;
+        let titleEn = property.propertyTitle || `${property.propertyType || 'Property'} in ${property.address || 'UAE'} `;
         if (titleEn.length < 30) {
             titleEn = titleEn.padEnd(30, ' '); // Pad with spaces if too short
         } else if (titleEn.length > 50) {
@@ -1077,20 +1084,20 @@ export class PropertiesService {
         }
 
         // Validate and prepare description (750-2000 characters required by PF)
-        this.logger.log(`=== DEBUG: Original description from DB: "${property.propertyDescription?.substring(0, 100)}..." (length: ${property.propertyDescription?.length || 0})`);
+        this.logger.log(`=== DEBUG: Original description from DB: "${property.propertyDescription?.substring(0, 100)}..."(length: ${property.propertyDescription?.length || 0})`);
         let descriptionEn = property.propertyDescription || property.propertyTitle || '';
         if (descriptionEn.length < 750) {
             // Pad with descriptive default text to meet minimum requirement
-            const defaultPadding = ` This ${property.propertyType || 'property'} is located in ${property.address || property.emirate || 'UAE'}. ` +
+            const defaultPadding = ` This ${property.propertyType || 'property'} is located in ${property.address || property.emirate || 'UAE'}.` +
                 `It offers ${property.bedrooms || 0} bedrooms and ${property.bathrooms || 0} bathrooms with a total area of ${property.area || 0} sq.ft. ` +
-                `This listing is available for ${purposeLower === 'rent' ? 'rent' : 'sale'}. ` +
+                `This listing is available for ${purposeLower === 'rent' ? 'rent' : 'sale'}.` +
                 `Contact us for more details about this excellent opportunity. `;
             while (descriptionEn.length < 750) {
                 descriptionEn += defaultPadding;
             }
             descriptionEn = descriptionEn.substring(0, 2000); // Cap at max length
         }
-        this.logger.log(`=== DEBUG: Final description to send: "${descriptionEn.substring(0, 100)}..." (length: ${descriptionEn.length})`);
+        this.logger.log(`=== DEBUG: Final description to send: "${descriptionEn.substring(0, 100)}..."(length: ${descriptionEn.length})`);
 
         // Prepare listing payload according to Property Finder API requirements
         const listing: any = {
@@ -1286,7 +1293,7 @@ export class PropertiesService {
                 let existingListing: any = null;
                 try {
                     existingListing = await this.propertyFinderService.getListing(property.pfListingId);
-                    this.logger.log(`Fetched existing listing: ${JSON.stringify(existingListing?.title || 'No title')}`);
+                    this.logger.log(`Fetched existing listing: ${JSON.stringify(existingListing?.title || 'No title')} `);
                 } catch (fetchError) {
                     this.logger.warn(`Could not fetch existing listing, will send full replacement`, fetchError);
                 }
@@ -1377,7 +1384,7 @@ export class PropertiesService {
                     data: {
                         type: 'ERROR',
                         title: 'Failed to Update Property on PF',
-                        message: `Failed to sync property "${propTitle}" to Property Finder. Please check logs.`,
+                        message: `Failed to sync property "${propTitle}" to Property Finder.Please check logs.`,
                     }
                 });
             } catch (nErr) {
@@ -1387,8 +1394,8 @@ export class PropertiesService {
             if ((error as any).response) {
                 const axiosError = error as any;
                 this.logger.error('=== PROPERTY FINDER API ERROR ===');
-                this.logger.error(`Status: ${axiosError.response.status}`);
-                this.logger.error(`Data: ${JSON.stringify(axiosError.response.data, null, 2)}`);
+                this.logger.error(`Status: ${axiosError.response.status} `);
+                this.logger.error(`Data: ${JSON.stringify(axiosError.response.data, null, 2)} `);
                 this.logger.error('=================================');
                 throw new HttpException(
                     axiosError.response.data || 'Failed to sync with Property Finder',
@@ -1619,7 +1626,7 @@ export class PropertiesService {
                     bathrooms: parseInt(pfListing.bathrooms) || parseInt(pfListing.bathroom) || 0,
 
                     // Detailed Features
-                    unitNumber: pfListing.unitNumber ? String(pfListing.unitNumber) : (pfListing.floorNumber ? `Floor ${pfListing.floorNumber}` : null),
+                    unitNumber: pfListing.unitNumber ? String(pfListing.unitNumber) : (pfListing.floorNumber ? `Floor ${pfListing.floorNumber} ` : null),
                     furnishingType: pfListing.furnishingType || null,
                     hasKitchen: !!pfListing.hasKitchen,
                     kitchens: pfListing.hasKitchen ? 1 : 0,
@@ -1762,7 +1769,7 @@ export class PropertiesService {
             return updated;
         } catch (error: any) {
             this.logger.error(`Failed to sync property details from PF for ${id}`, error);
-            throw new Error(`Failed to sync from PF: ${error.message}`);
+            throw new Error(`Failed to sync from PF: ${error.message} `);
         }
     }
 
@@ -2131,7 +2138,7 @@ export class PropertiesService {
                         });
 
                         updated++;
-                        this.logger.log(`Updated location for property ${property.id}: ${pfLocationPath}`);
+                        this.logger.log(`Updated location for property ${property.id}: ${pfLocationPath} `);
                     } else {
                         this.logger.warn(`Could not resolve location path for property ${property.id}`);
                         failed++;
@@ -2210,7 +2217,7 @@ export class PropertiesService {
                         data: { pfLocationPath }
                     });
                     updated++;
-                    this.logger.log(`Updated location path for ${property.id}: ${pfLocationPath}`);
+                    this.logger.log(`Updated location path for ${property.id}: ${pfLocationPath} `);
                 } else {
                     this.logger.warn(`Could not resolve location path for ID ${property.pfLocationId}`);
                     failed++;

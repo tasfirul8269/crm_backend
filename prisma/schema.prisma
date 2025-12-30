@@ -500,3 +500,35 @@ model NocOwner {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 }
+
+// File Manager System
+model Folder {
+  id          String   @id @default(cuid())
+  name        String
+  parentId    String?
+  parent      Folder?  @relation("FolderToFolder", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Folder[] @relation("FolderToFolder")
+  files       File[]
+  isSystem    Boolean  @default(false) // Prevent deletion of root automation folders
+  
+  // Optional: Link to entities if we want direct relation besides path logic
+  // propertyId String?
+  // agentId    String? 
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model File {
+  id          String   @id @default(cuid())
+  name        String
+  url         String
+  mimeType    String
+  size        Int      @default(0)
+  
+  folderId    String?
+  folder      Folder?  @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
