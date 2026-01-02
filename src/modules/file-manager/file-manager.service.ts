@@ -402,7 +402,79 @@ export class FileManagerService {
             else stats.categories.others += file.size || 0;
         });
 
+        // Overlay with real S3 usage if available
+        try {
+            console.log(`FileManagerService: Calculating Stats... Prisma Usage: ${stats.usedSize}`);
+            const s3Usage = await this.uploadService.getS3Usage();
+            console.log(`FileManagerService: S3 Usage Result: ${s3Usage.totalSizeBytes}`);
+
+            if (s3Usage.totalSizeBytes > 0) {
+                stats.usedSize = s3Usage.totalSizeBytes;
+                stats.categories.images = s3Usage.categories.images;
+                stats.categories.videos = s3Usage.categories.videos;
+                stats.categories.audio = s3Usage.categories.audio;
+                stats.categories.documents = s3Usage.categories.documents;
+                stats.categories.archives = s3Usage.categories.archives || 0;
+                stats.categories.fonts = s3Usage.categories.fonts || 0;
+                stats.categories.others = s3Usage.categories.others;
+            } else {
+                console.log('FileManagerService: S3 Usage is 0, keeping Prisma usage.');
+            }
+        } catch (e) {
+            console.error('FileManagerService: Error fetching S3 usage', e);
+        }
+
         return stats;
+    }
+
+    async getFilesByCategory(category: string) {
+        const s3Files = await this.uploadService.getS3Files();
+
+        // File extension helpers
+        const getExt = (name: string) => name?.split('.').pop()?.toLowerCase() || '';
+        const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'tiff', 'tif', 'heic', 'heif', 'ico', 'avif'];
+        const videoExts = ['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', 'm4v', '3gp'];
+        const audioExts = ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma'];
+        const documentExts = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'rtf', 'odt', 'ods', 'odp'];
+        const fontExts = ['ttf', 'otf', 'woff', 'woff2', 'eot'];
+        const archiveExts = ['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz'];
+
+        return s3Files.filter(file => {
+            const ext = getExt(file.name);
+            const mime = (file.mimeType || '').toLowerCase();
+
+            switch (category.toLowerCase()) {
+                case 'images':
+                    return imageExts.includes(ext) || mime.startsWith('image/');
+                case 'videos':
+                    return videoExts.includes(ext) || mime.startsWith('video/');
+                case 'audio':
+                    return audioExts.includes(ext) || mime.startsWith('audio/');
+                case 'documents':
+                    return documentExts.includes(ext) ||
+                        mime === 'application/pdf' ||
+                        mime.includes('word') ||
+                        mime.includes('spreadsheet');
+                case 'fonts':
+                    return fontExts.includes(ext) || mime.includes('font');
+                case 'archives':
+                    return archiveExts.includes(ext) ||
+                        mime.includes('zip') ||
+                        mime.includes('rar') ||
+                        mime.includes('tar');
+                case 'others':
+                    // Everything that doesn't fit above
+                    const isImg = imageExts.includes(ext) || mime.startsWith('image/');
+                    const isVid = videoExts.includes(ext) || mime.startsWith('video/');
+                    const isAud = audioExts.includes(ext) || mime.startsWith('audio/');
+                    const isDoc = documentExts.includes(ext) || mime === 'application/pdf' || mime.includes('word') || mime.includes('spreadsheet');
+                    const isFont = fontExts.includes(ext) || mime.includes('font');
+                    const isArchive = archiveExts.includes(ext) || mime.includes('zip') || mime.includes('rar') || mime.includes('tar');
+                    return !isImg && !isVid && !isAud && !isDoc && !isFont && !isArchive;
+                default:
+                    return true;
+            }
+        });
     }
 
     async getRecentFiles() {

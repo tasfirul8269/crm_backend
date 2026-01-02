@@ -23,6 +23,11 @@ export class FileManagerController {
         return this.fileManagerService.getStorageStats();
     }
 
+    @Get('category/:category')
+    async getCategoryFiles(@Param('category') category: string) {
+        return this.fileManagerService.getFilesByCategory(category);
+    }
+
     @Get('recent')
     async getRecent() {
         return this.fileManagerService.getRecentFiles();
