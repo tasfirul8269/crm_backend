@@ -67,7 +67,9 @@ export class NocService {
                 // Property Details
                 propertyType: createNocDto.propertyType,
                 buildingProjectName: createNocDto.buildingProjectName,
-                community: createNocDto.community,
+                community: Array.isArray(createNocDto.community)
+                    ? createNocDto.community.filter(Boolean).join(', ')
+                    : createNocDto.community,
                 streetName: createNocDto.streetName,
                 buildUpArea: createNocDto.buildUpArea,
                 plotArea: createNocDto.plotArea,

@@ -18,6 +18,21 @@ export class FileManagerController {
         return this.fileManagerService.migrateAllData();
     }
 
+    @Get('stats')
+    async getStats() {
+        return this.fileManagerService.getStorageStats();
+    }
+
+    @Get('recent')
+    async getRecent() {
+        return this.fileManagerService.getRecentFiles();
+    }
+
+    @Get('deleted')
+    async getDeleted() {
+        return this.fileManagerService.getDeletedItems();
+    }
+
     @Post('folder')
     async createFolder(
         @Body('name') name: string,
@@ -33,6 +48,16 @@ export class FileManagerController {
         @Body('folderId') folderId?: string
     ) {
         return this.fileManagerService.uploadFile(file, folderId);
+    }
+
+    @Post('file/:id/restore')
+    async restoreFile(@Param('id') id: string) {
+        return this.fileManagerService.restoreFile(id);
+    }
+
+    @Post('folder/:id/restore')
+    async restoreFolder(@Param('id') id: string) {
+        return this.fileManagerService.restoreFolder(id);
     }
 
     @Delete('folder/:id')

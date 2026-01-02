@@ -23,22 +23,37 @@ export class FileManagerService {
 
     async getFolderContents(folderId?: string) {
         // If no folderId, get root folders (parentId is null)
-        const whereClause = folderId ? { parentId: folderId } : { parentId: null };
+        const whereClause = {
+            isDeleted: false,
+            parentId: folderId ?? null
+        };
 
-        const folders = await this.prisma.folder.findMany({
+        const foldersRaw = await this.prisma.folder.findMany({
             where: whereClause,
             orderBy: { name: 'asc' },
             include: {
                 _count: {
-                    select: { files: true, children: true }
+                    select: {
+                        files: { where: { isDeleted: false } },
+                        children: { where: { isDeleted: false } }
+                    }
                 }
             }
         });
 
-        // Get files only if folderId is provided (files can't easily be at 'root' in this UI logic, 
+        // Calculate sizes for each folder in the current view
+        const folders = await Promise.all(foldersRaw.map(async (folder) => {
+            const size = await this.getFolderSize(folder.id);
+            return { ...folder, size };
+        }));
+
+        // Get files only if folderId is provided (files can't easily be at 'root' in this UI logic,
         // or they can be. Let's assume files can be at root too).
         const files = await this.prisma.file.findMany({
-            where: { folderId: folderId ?? null },
+            where: {
+                isDeleted: false,
+                folderId: folderId ?? null
+            },
             orderBy: { createdAt: 'desc' },
         });
 
@@ -49,6 +64,30 @@ export class FileManagerService {
         }
 
         return { folders, files, breadcrumbs };
+    }
+
+    private async getFolderSize(folderId: string): Promise<number> {
+        // Recursive size calculation
+        let totalSize = 0;
+
+        // Sum files in this folder
+        const files = await this.prisma.file.aggregate({
+            _sum: { size: true },
+            where: { folderId, isDeleted: false }
+        });
+        totalSize += files._sum.size || 0;
+
+        // Sum subfolders
+        const subfolders = await this.prisma.folder.findMany({
+            where: { parentId: folderId, isDeleted: false },
+            select: { id: true }
+        });
+
+        for (const sub of subfolders) {
+            totalSize += await this.getFolderSize(sub.id);
+        }
+
+        return totalSize;
     }
 
     private async getBreadcrumbs(folderId: string): Promise<any[]> {
@@ -201,11 +240,14 @@ export class FileManagerService {
         if (salesPhotoUrl) await this.registerSystemFile(salesPhotoUrl, 'Sales Manager', rootId);
     }
 
+    async createTenancyContractStructure(contract: any, pdfUrl: string) {
+        const rootId = await this.ensureFolderStructure(['Tenancy Contracts']);
+        await this.registerSystemFile(pdfUrl, `Tenancy Contract - ${contract.id}.pdf`, rootId);
+    }
+
     async createNocFolder(noc: any, pdfUrl?: string) {
-        // Mateluxy NOC / [Building?] / [ID]
-        const folderName = noc.buildingProjectName || noc.community || 'Unspecified Location';
-        const rootId = await this.ensureFolderStructure(['Mateluxy NOC', folderName, noc.id]);
-        if (pdfUrl) await this.registerSystemFile(pdfUrl, 'Signed NOC.pdf', rootId);
+        const rootId = await this.ensureFolderStructure(['Mateluxy NOC']);
+        if (pdfUrl) await this.registerSystemFile(pdfUrl, `Signed NOC - ${noc.id}.pdf`, rootId);
     }
 
     async createUserFolder(user: any, avatarUrl?: string) {
@@ -281,39 +323,114 @@ export class FileManagerService {
         const file = await this.prisma.file.findUnique({ where: { id: fileId } });
         if (!file) throw new Error('File not found');
 
-        // Delete from S3
-        if (file.url) {
-            await this.uploadService.deleteFile(file.url);
-        }
+        // Soft delete from DB
+        return this.prisma.file.update({
+            where: { id: fileId },
+            data: { isDeleted: true, deletedAt: new Date() }
+        });
+    }
 
-        // Delete from DB
-        return this.prisma.file.delete({ where: { id: fileId } });
+    async restoreFile(fileId: string) {
+        return this.prisma.file.update({
+            where: { id: fileId },
+            data: { isDeleted: false, deletedAt: null }
+        });
     }
 
     async deleteFolder(folderId: string) {
-        // Recursive delete
         const folder = await this.prisma.folder.findUnique({
             where: { id: folderId },
-            include: { children: true, files: true }
         });
 
         if (!folder) throw new Error('Folder not found');
 
-        // Delete files
-        for (const file of folder.files) {
-            await this.deleteFile(file.id);
-        }
+        // Soft delete folder and all contents recursively (logic wise, path-based filters handle it)
+        // For real recursive soft delete:
+        await this.prisma.file.updateMany({
+            where: { folderId },
+            data: { isDeleted: true, deletedAt: new Date() }
+        });
 
-        // Delete children folders recursively
-        for (const child of folder.children) {
-            await this.deleteFolder(child.id);
-        }
-
-        // Delete folder
-        return this.prisma.folder.delete({ where: { id: folderId } });
+        return this.prisma.folder.update({
+            where: { id: folderId },
+            data: { isDeleted: true, deletedAt: new Date() }
+        });
     }
 
-    private async registerSystemFile(url: string, nameHint: string, folderId: string) {
+    async restoreFolder(folderId: string) {
+        await this.prisma.file.updateMany({
+            where: { folderId },
+            data: { isDeleted: false, deletedAt: null }
+        });
+
+        return this.prisma.folder.update({
+            where: { id: folderId },
+            data: { isDeleted: false, deletedAt: null }
+        });
+    }
+
+    async getStorageStats() {
+        const files = await this.prisma.file.findMany({
+            where: { isDeleted: false },
+            select: { size: true, mimeType: true }
+        });
+
+        const totalLimit = 150 * 1024 * 1024 * 1024; // 150 GB
+        const stats = {
+            totalLimit,
+            usedSize: 0,
+            categories: {
+                images: 0,
+                videos: 0,
+                audio: 0,
+                archives: 0,
+                documents: 0,
+                fonts: 0,
+                others: 0
+            }
+        };
+
+        files.forEach(file => {
+            stats.usedSize += file.size;
+            const mime = file.mimeType.toLowerCase();
+            if (mime.startsWith('image/')) stats.categories.images += file.size || 0;
+            else if (mime.startsWith('video/')) stats.categories.videos += file.size || 0;
+            else if (mime.startsWith('audio/')) stats.categories.audio += file.size || 0;
+            else if (mime === 'application/zip' || mime.includes('archive') || mime.includes('compressed')) stats.categories.archives += file.size || 0;
+            else if (mime === 'application/pdf' || mime.includes('word') || mime.includes('openxmlformats') || mime.includes('spreadsheet') || mime.includes('text/')) stats.categories.documents += file.size || 0;
+            else if (mime.startsWith('font/')) stats.categories.fonts += file.size || 0;
+            else stats.categories.others += file.size || 0;
+        });
+
+        return stats;
+    }
+
+    async getRecentFiles() {
+        return this.prisma.file.findMany({
+            where: { isDeleted: false },
+            orderBy: { updatedAt: 'desc' },
+            take: 10,
+            include: { folder: true }
+        });
+    }
+
+    async getDeletedItems() {
+        const files = await this.prisma.file.findMany({
+            where: { isDeleted: true },
+            orderBy: { deletedAt: 'desc' },
+            take: 20
+        });
+
+        const folders = await this.prisma.folder.findMany({
+            where: { isDeleted: true },
+            orderBy: { deletedAt: 'desc' },
+            take: 20
+        });
+
+        return { files, folders };
+    }
+
+    async registerSystemFile(url: string, nameHint: string, folderId: string) {
         // Check if already exists in this folder to avoid dupes?
         // For simplicity, just create. filename will be derived or generic.
 

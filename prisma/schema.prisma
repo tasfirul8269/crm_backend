@@ -276,6 +276,8 @@ model Property {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
+  tenancyContracts  TenancyContract[]
+
   @@index([isActive, pfPublished])
   @@index([isActive, status])
   @@index([price])
@@ -517,9 +519,12 @@ model Folder {
   files       File[]
   isSystem    Boolean  @default(false) // Prevent deletion of root automation folders
   
-  // Optional: Link to entities if we want direct relation besides path logic
-  // propertyId String?
-  // agentId    String? 
+  // Storage tracking
+  size        Int      @default(0) // Aggregated size of all files in this folder and subfolders
+  
+  // Soft delete
+  isDeleted   Boolean  @default(false)
+  deletedAt   DateTime?
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -535,6 +540,10 @@ model File {
   folderId    String?
   folder      Folder?  @relation(fields: [folderId], references: [id], onDelete: Cascade)
   
+  // Soft delete
+  isDeleted   Boolean  @default(false)
+  deletedAt   DateTime?
+  
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -549,4 +558,49 @@ model PasswordEntry {
   createdBy   String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model TenancyContract {
+  id              String   @id @default(cuid())
+  
+  // Property Relation
+  propertyId      String?
+  property        Property? @relation(fields: [propertyId], references: [id])
+  
+  // Step 1: Owner Details
+  ownerName       String?
+  ownerPhone      String?
+  ownerEmail      String?
+
+  // Step 2: Tenant Details
+  tenantName      String?
+  tenantEmail     String?
+  tenantPhone     String?
+
+  // Step 3: Property Details
+  propertyUsage   String?
+  buildingName    String?
+  location        String?
+  propertySize    Float?
+  propertyType    String? // Apartment, Villa, etc.
+  propertyNumber  String?
+  plotNumber      String?
+  premisesNumber  String?
+
+  // Step 4: Contract Details
+  contractStartDate DateTime?
+  contractEndDate   DateTime?
+  annualRent        Float?
+  contractValue     Float?
+  securityDeposit   Float?
+  modeOfPayment     String?
+
+  // Step 5: Additional Terms
+  additionalTerms   Json? // Stored as String[]
+
+  // Generated PDF
+  pdfUrl            String?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
