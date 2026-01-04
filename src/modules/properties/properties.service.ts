@@ -184,6 +184,7 @@ export class PropertiesService {
                     isActive: true,
                     pfPublished: true,
                     pfVerificationStatus: true,
+                    pfQualityScore: true,
                     pfLocationPath: true,
                     category: true,
                     purpose: true,

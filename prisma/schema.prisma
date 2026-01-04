@@ -555,6 +555,7 @@ model PasswordEntry {
   password    String   // Encrypted
   accessIds   String[] // Array of User IDs who have access
   note        String?
+  logoUrl     String?  // Optional logo/icon URL for easy identification
   createdBy   String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -603,4 +604,17 @@ model TenancyContract {
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+}
+
+// Watermark Management
+model Watermark {
+  id          String   @id @default(cuid())
+  name        String
+  imageUrl    String
+  position    String   @default("bottom-right")  // top-left, top-right, bottom-left, bottom-right, center
+  opacity     Float    @default(0.8)             // 0.0 to 1.0
+  scale       Float    @default(0.15)            // % of image width (0.1 = 10%, 0.2 = 20%)
+  isActive    Boolean  @default(false)           // Only one can be active at a time
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

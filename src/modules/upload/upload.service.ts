@@ -116,6 +116,152 @@ export class UploadService {
     }
 
     /**
+     * Upload property image with optional watermark
+     */
+    async uploadPropertyImage(
+        file: Express.Multer.File,
+        watermark?: { imageUrl: string; position: string; opacity: number; scale: number } | null
+    ): Promise<string | null> {
+        if (!this.isConfigured || !this.s3Client) {
+            this.logger.warn('Skipping S3 upload - AWS not configured');
+            return null;
+        }
+
+        try {
+            const originalName = file.originalname;
+            const lastDotIndex = originalName.lastIndexOf('.');
+            const baseName = lastDotIndex > 0 ? originalName.substring(0, lastDotIndex) : originalName;
+            const extension = lastDotIndex > 0 ? originalName.substring(lastDotIndex) : '';
+
+            let key = await this.getUniqueKey(baseName, extension);
+            let buffer = file.buffer;
+            let contentType = file.mimetype;
+
+            // Optimize image first
+            if (file.mimetype.startsWith('image/')) {
+                try {
+                    buffer = await this.optimizeImage(file.buffer);
+                } catch (optError) {
+                    this.logger.warn('Image optimization failed, using original:', optError);
+                }
+
+                // Apply watermark if provided
+                if (watermark) {
+                    try {
+                        buffer = await this.applyWatermark(buffer, watermark);
+                    } catch (wmError) {
+                        this.logger.warn('Failed to apply watermark, proceeding without:', wmError);
+                    }
+                }
+            }
+
+            await this.s3Client.send(
+                new PutObjectCommand({
+                    Bucket: this.bucketName,
+                    Key: key,
+                    Body: buffer,
+                    ContentType: contentType,
+                    ACL: 'public-read',
+                }),
+            );
+
+            const url = `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${key}`;
+            this.logger.log(`Property image uploaded successfully: ${url}`);
+            return url;
+        } catch (error) {
+            this.logger.error('Failed to upload property image to S3:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Apply watermark to an image buffer
+     */
+    private async applyWatermark(
+        imageBuffer: Buffer,
+        watermark: { imageUrl: string; position: string; opacity: number; scale: number }
+    ): Promise<Buffer> {
+        // Fetch watermark image
+        const response = await axios.get(watermark.imageUrl, { responseType: 'arraybuffer' });
+        const watermarkBuffer = Buffer.from(response.data);
+
+        // Get base image dimensions
+        const baseImage = sharp(imageBuffer);
+        const baseMetadata = await baseImage.metadata();
+        const baseWidth = baseMetadata.width || 1920;
+        const baseHeight = baseMetadata.height || 1080;
+
+        // Calculate watermark size (scale is % of base image width)
+        const wmWidth = Math.round(baseWidth * watermark.scale);
+
+        // Resize watermark maintaining aspect ratio
+        const resizedWatermark = await sharp(watermarkBuffer)
+            .resize(wmWidth, null, { fit: 'inside', withoutEnlargement: false })
+            .toBuffer();
+
+        const wmMetadata = await sharp(resizedWatermark).metadata();
+        const wmHeight = wmMetadata.height || wmWidth;
+
+        // Calculate position
+        let left = 0;
+        let top = 0;
+        const padding = 20; // Padding from edges
+
+        switch (watermark.position) {
+            case 'top-left':
+                left = padding;
+                top = padding;
+                break;
+            case 'top-right':
+                left = baseWidth - wmWidth - padding;
+                top = padding;
+                break;
+            case 'bottom-left':
+                left = padding;
+                top = baseHeight - wmHeight - padding;
+                break;
+            case 'bottom-right':
+                left = baseWidth - wmWidth - padding;
+                top = baseHeight - wmHeight - padding;
+                break;
+            case 'center':
+                left = Math.round((baseWidth - wmWidth) / 2);
+                top = Math.round((baseHeight - wmHeight) / 2);
+                break;
+            default:
+                left = baseWidth - wmWidth - padding;
+                top = baseHeight - wmHeight - padding;
+        }
+
+        // Ensure coordinates are non-negative
+        left = Math.max(0, left);
+        top = Math.max(0, top);
+
+        // Apply opacity to watermark
+        const watermarkWithOpacity = await sharp(resizedWatermark)
+            .ensureAlpha()
+            .modulate({ saturation: 1 })
+            .composite([{
+                input: Buffer.from([255, 255, 255, Math.round(255 * watermark.opacity)]),
+                raw: { width: 1, height: 1, channels: 4 },
+                tile: true,
+                blend: 'dest-in'
+            }])
+            .toBuffer();
+
+        // Composite watermark onto base image
+        return baseImage
+            .composite([{
+                input: watermarkWithOpacity,
+                left,
+                top,
+            }])
+            .jpeg({ quality: 85 })
+            .toBuffer();
+    }
+
+
+    /**
      * Generates a unique S3 key by checking for existing files and appending (1), (2), etc. if needed.
      */
     private async getUniqueKey(baseName: string, extension: string): Promise<string> {

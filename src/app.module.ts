@@ -25,6 +25,7 @@ import { AiModule } from './modules/ai/ai.module';
 import { FileManagerModule } from './modules/file-manager/file-manager.module';
 import { PasswordsModule } from './modules/passwords/passwords.module';
 import { TenancyContractModule } from './modules/tenancy-contract/tenancy-contract.module';
+import { WatermarksModule } from './modules/watermarks/watermarks.module';
 
 
 @Module({
@@ -54,6 +55,7 @@ import { TenancyContractModule } from './modules/tenancy-contract/tenancy-contra
     FileManagerModule,
     PasswordsModule,
     TenancyContractModule,
+    WatermarksModule,
   ],
   controllers: [AppController],
   providers: [AppService],

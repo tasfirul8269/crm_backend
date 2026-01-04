@@ -24,31 +24,33 @@ export class PasswordsService {
     }
 
     async findAll(userId: string, role: string) {
-        // Return full list but filter access status client-side or mark access?
-        // Requirement: "appear in the page as a card design and only show password title"
-        // But "only assigned admins and moderators can see the password & email"
-        // We can list all titles so everyone knows they exist? Or only list what they have access to?
-        // "only slected admin or moderator can access the email/username and password" - implies title might be visible?
-        // Let's allow listing all titles, but protect details. 
-        // Or if strictly "without them anyone can't access it", maybe even title?
-        // "appear in the page ... when user click on it he can see ... only slected ... can access"
-        // This suggests title is public (to admins/mods/authorized users of the page), content is restricted.
+        // Enforce Strict Access Control:
+        // Only return passwords that the user has explicit access to (or created).
+        // Unauthorized passwords are NOT returned at all (remain hidden).
 
         const entries = await this.prisma.passwordEntry.findMany({
+            where: {
+                OR: [
+                    { createdBy: userId },
+                    { accessIds: { has: userId } }
+                ]
+            },
             orderBy: { createdAt: 'desc' },
         });
 
-        return entries.map(entry => {
-            const hasAccess = entry.accessIds.includes(userId) || entry.createdBy === userId;
-            return {
-                id: entry.id,
-                title: entry.title,
-                note: entry.note, // Note is visible? User said "additional note will also be shown in the singel page"
-                createdAt: entry.createdAt,
-                hasAccess,
-                // Don't send encrypted stuff
-            };
-        });
+        // Since we are now filtering strictly, we can safely return the decrypted credentials
+        // because the user IS authorized to see every entry in this list.
+        return entries.map(entry => ({
+            id: entry.id,
+            title: entry.title,
+            username: decryptValue(entry.username),
+            password: decryptValue(entry.password),
+            note: entry.note,
+            logoUrl: entry.logoUrl,
+            createdAt: entry.createdAt,
+            hasAccess: true, // Always true for the filtered list
+            accessIds: entry.accessIds, // Helpful for edit form
+        }));
     }
 
     async findOne(id: string, userId: string, role: string) {

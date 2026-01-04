@@ -21,4 +21,8 @@ export class CreatePasswordDto {
     @IsString()
     @IsOptional()
     note?: string;
+
+    @IsString()
+    @IsOptional()
+    logoUrl?: string;
 }
