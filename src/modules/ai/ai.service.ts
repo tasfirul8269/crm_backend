@@ -2,6 +2,7 @@ import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { PrismaService } from '../../prisma/prisma.service';
+import { IntegrationsService } from '../integrations/integrations.service';
 import { UpdateAiSettingsDto, CreateTrainingExampleDto, UpdateTrainingExampleDto } from './dto/ai-settings.dto';
 
 interface PropertyDetails {
@@ -29,14 +30,58 @@ export class AiService {
     constructor(
         private configService: ConfigService,
         private prisma: PrismaService,
+        private integrationsService: IntegrationsService,
     ) {
+        // Initial setup with env variable (will be overridden by integration config if available)
         this.apiKey = this.configService.get<string>('GEMINI_API_KEY');
         if (this.apiKey) {
             this.genAI = new GoogleGenerativeAI(this.apiKey);
-            this.logger.log('Gemini AI initialized successfully');
+            this.logger.log('Gemini AI initialized with environment variable');
         } else {
-            this.logger.warn('GEMINI_API_KEY not configured. AI features will be disabled.');
+            this.logger.warn('GEMINI_API_KEY not in env. Will check integration config on first use.');
         }
+    }
+
+    /**
+     * Ensures the Gemini API is initialized, fetching from integration config if needed
+     */
+    private async ensureApiInitialized(): Promise<boolean> {
+        // If already initialized, return true
+        if (this.genAI && this.apiKey) {
+            return true;
+        }
+
+        // Try to get from integration config
+        try {
+            const credentials = await this.integrationsService.getCredentials('gemini');
+            if (credentials?.apiKey && typeof credentials.apiKey === 'string') {
+                this.apiKey = credentials.apiKey;
+                this.genAI = new GoogleGenerativeAI(credentials.apiKey);
+                this.logger.log('Gemini AI initialized from integration config');
+                return true;
+            }
+        } catch (error) {
+            this.logger.warn('Failed to get Gemini credentials from integration config');
+        }
+
+        // Fall back to env variable again (in case it was set later)
+        const envKey = this.configService.get<string>('GEMINI_API_KEY');
+        if (envKey) {
+            this.apiKey = envKey;
+            this.genAI = new GoogleGenerativeAI(this.apiKey);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Refresh API key from integration config (call when integration is updated)
+     */
+    async refreshApiKey(): Promise<void> {
+        this.genAI = null;
+        this.apiKey = undefined;
+        await this.ensureApiInitialized();
     }
 
     // ==================== SETTINGS METHODS ====================
@@ -121,10 +166,12 @@ export class AiService {
     // ==================== DESCRIPTION GENERATION ====================
 
     async generatePropertyDescription(propertyDetails: PropertyDetails): Promise<string> {
-        if (!this.genAI || !this.apiKey) {
+        // Ensure API is initialized (from integration config or env)
+        const isInitialized = await this.ensureApiInitialized();
+        if (!isInitialized || !this.genAI) {
             this.logger.error('AI service not configured - no API key');
             throw new HttpException(
-                'AI service is not configured. Please add GEMINI_API_KEY to your environment.',
+                'AI service is not configured. Please connect Gemini AI in Integrations or add GEMINI_API_KEY to environment.',
                 HttpStatus.SERVICE_UNAVAILABLE
             );
         }
@@ -184,10 +231,12 @@ export class AiService {
     // ==================== TITLE GENERATION ====================
 
     async generatePropertyTitle(propertyDetails: PropertyDetails): Promise<string> {
-        if (!this.genAI || !this.apiKey) {
+        // Ensure API is initialized (from integration config or env)
+        const isInitialized = await this.ensureApiInitialized();
+        if (!isInitialized || !this.genAI) {
             this.logger.error('AI service not configured - no API key');
             throw new HttpException(
-                'AI service is not configured. Please add GEMINI_API_KEY to your environment.',
+                'AI service is not configured. Please connect Gemini AI in Integrations or add GEMINI_API_KEY to environment.',
                 HttpStatus.SERVICE_UNAVAILABLE
             );
         }

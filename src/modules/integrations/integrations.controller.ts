@@ -11,6 +11,13 @@ export class IntegrationsController {
         return this.integrationsService.findAll();
     }
 
+    // Public endpoint - returns only the Google Maps API key (safe for frontend)
+    @Get('google-maps-key')
+    async getGoogleMapsKey() {
+        const credentials = await this.integrationsService.getCredentials('google_maps');
+        return { apiKey: credentials?.apiKey || null };
+    }
+
     @Get('notifications')
     getNotifications() {
         return this.integrationsService.getNotifications();

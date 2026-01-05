@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { v4 as uuidv4 } from 'uuid';
 import sharp from 'sharp';
 import axios from 'axios';
+import { IntegrationsService } from '../integrations/integrations.service';
 
 interface S3Usage {
     totalSizeBytes: number;
@@ -22,42 +23,102 @@ interface S3Usage {
 @Injectable()
 export class UploadService {
     private s3Client: S3Client | null = null;
-    private bucketName: string;
-    private region: string;
+    private bucketName: string = '';
+    private region: string = '';
     private readonly logger = new Logger(UploadService.name);
     private isConfigured = false;
+    private initializationAttempted = false;
 
-    constructor(private configService: ConfigService) {
+    constructor(
+        private configService: ConfigService,
+        private integrationsService: IntegrationsService,
+    ) {
+        // Try env variables on startup for backward compatibility
+        this.initializeFromEnv();
+    }
+
+    /**
+     * Initialize from environment variables (backward compatibility)
+     */
+    private initializeFromEnv(): void {
         const region = this.configService.get<string>('AWS_REGION') || '';
         const accessKeyId = this.configService.get<string>('AWS_ACCESS_KEY_ID') || '';
         const secretAccessKey = this.configService.get<string>('AWS_SECRET_ACCESS_KEY') || '';
         const bucketName = this.configService.get<string>('AWS_BUCKET_NAME') || '';
 
-        if (!region || !accessKeyId || !secretAccessKey || !bucketName) {
-            this.logger.warn('AWS S3 credentials not configured. Avatar uploads will be skipped.');
-            this.isConfigured = false;
-            return;
+        if (region && accessKeyId && secretAccessKey && bucketName) {
+            try {
+                this.s3Client = new S3Client({
+                    region,
+                    credentials: { accessKeyId, secretAccessKey },
+                });
+                this.bucketName = bucketName;
+                this.region = region;
+                this.isConfigured = true;
+                this.logger.log('AWS S3 client initialized from environment variables');
+            } catch (error) {
+                this.logger.error('Failed to initialize S3 client from env:', error);
+            }
+        } else {
+            this.logger.warn('AWS S3 env credentials not complete. Will check integration config on first use.');
+        }
+    }
+
+    /**
+     * Ensure S3 is initialized, fetching from integration config if needed
+     */
+    private async ensureS3Initialized(): Promise<boolean> {
+        if (this.isConfigured && this.s3Client) {
+            return true;
         }
 
+        // Only attempt integration config once per app lifecycle
+        if (this.initializationAttempted) {
+            return this.isConfigured;
+        }
+        this.initializationAttempted = true;
+
+        // Try to get from integration config
         try {
-            this.s3Client = new S3Client({
-                region,
-                credentials: {
-                    accessKeyId,
-                    secretAccessKey,
-                },
-            });
-            this.bucketName = bucketName;
-            this.region = region;
-            this.isConfigured = true;
-            this.logger.log('AWS S3 client initialized successfully');
+            const credentials = await this.integrationsService.getCredentials('amazon_aws');
+            if (credentials?.accessKeyId && credentials?.secretAccessKey && credentials?.bucketName && credentials?.region) {
+                this.s3Client = new S3Client({
+                    region: credentials.region,
+                    credentials: {
+                        accessKeyId: credentials.accessKeyId,
+                        secretAccessKey: credentials.secretAccessKey,
+                    },
+                });
+                this.bucketName = credentials.bucketName;
+                this.region = credentials.region;
+                this.isConfigured = true;
+                this.logger.log('AWS S3 client initialized from integration config');
+                return true;
+            }
         } catch (error) {
-            this.logger.error('Failed to initialize S3 client:', error);
-            this.isConfigured = false;
+            this.logger.warn('Failed to get AWS credentials from integration config');
+        }
+
+        return false;
+    }
+
+    /**
+     * Refresh S3 credentials (call when integration is updated)
+     */
+    async refreshCredentials(): Promise<void> {
+        this.s3Client = null;
+        this.isConfigured = false;
+        this.initializationAttempted = false;
+        this.initializeFromEnv();
+        if (!this.isConfigured) {
+            await this.ensureS3Initialized();
         }
     }
 
     async uploadFile(file: Express.Multer.File): Promise<string | null> {
+        // Ensure S3 is initialized (from env or integration config)
+        await this.ensureS3Initialized();
+
         if (!this.isConfigured || !this.s3Client) {
             this.logger.warn('Skipping S3 upload - AWS not configured');
             return null;
@@ -128,6 +189,9 @@ export class UploadService {
         file: Express.Multer.File,
         watermark?: { imageUrl: string; position: string; opacity: number; scale: number } | null
     ): Promise<string | null> {
+        // Ensure S3 is initialized (from env or integration config)
+        await this.ensureS3Initialized();
+
         if (!this.isConfigured || !this.s3Client) {
             this.logger.warn('Skipping S3 upload - AWS not configured');
             return null;
