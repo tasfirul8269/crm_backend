@@ -1007,35 +1007,27 @@ export class PropertiesService {
         // Map category: CRM uses 'Residential'/'Commercial', PF uses 'residential'/'commercial'
         const category = (property.category || 'residential').toLowerCase();
 
-        // Map purpose/offering: CRM uses 'Sale'/'Rent', PF uses 'sale'/'rent'
-        // If Project Status is set, it overrides standard offering_type logic for Sale properties
-        let purposeLower = (property.purpose || 'sale').toLowerCase().replace('sell', 'sale');
+        // Map purpose: CRM uses 'Sale'/'Rent', PF uses 'sale'/'rent'
+        const purposeLower = (property.purpose || 'sale').toLowerCase().replace('sell', 'sale');
+
+        // Map Project Status for Sale properties
+        // PF API projectStatus enum: "completed" | "off_plan" | "completed_primary" | "off_plan_primary"
         let projectStatus: string | undefined = undefined;
-        let completionDate: string | undefined = undefined;
 
         if (purposeLower === 'sale' && property.projectStatus) {
-            // Map Project Status based on "Resale - Ready to move", "Resale - Off-plan", "Primary - Ready to move", "Primary - Off-Plan"
-            // Docs:
-            // Resale - Ready to move -> offering_type: sale, project_status: completed
-            // Resale - Off-plan -> offering_type: sale, project_status: off-plan
-            // Primary - Ready to move -> offering_type: primary-sale, project_status: completed
-            // Primary - Off-Plan -> offering_type: primary-sale, project_status: off-plan
-
+            // CRM values: "Resale - Ready to move", "Resale - Off-plan", "Primary - Ready to move", "Primary - Off-Plan"
             const status = property.projectStatus;
+            const isPrimary = status.includes('Primary');
+            const isOffPlan = status.includes('Off-plan') || status.includes('Off-Plan');
 
-            if (status.includes('Primary')) {
-                purposeLower = 'primary-sale';
+            if (isPrimary && isOffPlan) {
+                projectStatus = 'off_plan_primary';
+            } else if (isPrimary && !isOffPlan) {
+                projectStatus = 'completed_primary';
+            } else if (!isPrimary && isOffPlan) {
+                projectStatus = 'off_plan';
             } else {
-                purposeLower = 'sale';
-            }
-
-            if (status.includes('Off-plan') || status.includes('Off-Plan')) {
-                projectStatus = 'off-plan';
-                // Completion Date is required for Off-plan
-                if (property.completionDate) {
-                    completionDate = property.completionDate; // Assuming YYYY-MM format from frontend
-                }
-            } else {
+                // Resale - Ready to move
                 projectStatus = 'completed';
             }
         }
@@ -1147,7 +1139,6 @@ export class PropertiesService {
         // Prepare listing payload according to Property Finder API requirements
         const listing: any = {
             category,
-            offeringType: purposeLower, // Use mapped purposeLower (can be 'sale', 'rent', or 'primary-sale')
             type: pfType,
             furnishingType,
             reference: property.reference || property.id,
@@ -1274,16 +1265,9 @@ export class PropertiesService {
             listing.finishingType = property.finishingType.toLowerCase();
         }
 
-        // Add Project Status and Completion Date
+        // Add Project Status (PF enum: completed, off_plan, completed_primary, off_plan_primary)
         if (projectStatus) {
-            listing.project_status = projectStatus;
-        }
-        if (completionDate) {
-            listing.completion_date = completionDate;
-        }
-        // Add payment plan if off-plan (optional but recommended)
-        if (purposeLower === 'primary-sale' || projectStatus === 'off-plan') {
-            listing.payment_plan = 'Contact for details';
+            listing.projectStatus = projectStatus;
         }
 
         return listing;
