@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command, ListObjectsV2CommandOutput, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, ListObjectsV2Command, ListObjectsV2CommandOutput, HeadObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { ConfigService } from '@nestjs/config';
 import { v4 as uuidv4 } from 'uuid';
 import sharp from 'sharp';
@@ -475,6 +475,59 @@ export class UploadService {
             this.logger.error('Failed to delete file from S3:', error);
         }
     }
+
+    /**
+     * Get file from S3 as buffer using authenticated request
+     */
+    async getS3FileBuffer(url: string): Promise<{ buffer: Buffer; contentType: string } | null> {
+        await this.ensureS3Initialized();
+
+        if (!this.isConfigured || !this.s3Client) {
+            this.logger.warn('S3 not configured for getS3FileBuffer');
+            return null;
+        }
+
+        try {
+            // Extract key from URL
+            // URL format: https://bucket-name.s3.region.amazonaws.com/key
+            const urlParts = url.split('.amazonaws.com/');
+            if (urlParts.length < 2) {
+                this.logger.warn('Invalid S3 URL format:', url);
+                return null;
+            }
+
+            const key = decodeURIComponent(urlParts[1]);
+            this.logger.log(`Fetching S3 file with key: ${key}`);
+
+            const response = await this.s3Client.send(
+                new GetObjectCommand({
+                    Bucket: this.bucketName,
+                    Key: key,
+                }),
+            );
+
+            if (!response.Body) {
+                this.logger.warn('S3 GetObject returned no body');
+                return null;
+            }
+
+            // Convert readable stream to buffer
+            const chunks: Uint8Array[] = [];
+            for await (const chunk of response.Body as any) {
+                chunks.push(chunk);
+            }
+            const buffer = Buffer.concat(chunks);
+
+            return {
+                buffer,
+                contentType: response.ContentType || 'application/octet-stream'
+            };
+        } catch (error) {
+            this.logger.error('Failed to get file from S3:', error);
+            return null;
+        }
+    }
+
     async getS3Usage(): Promise<S3Usage> {
         if (!this.isConfigured || !this.s3Client) {
             console.log('UploadService: S3 Not Configured or Client null');

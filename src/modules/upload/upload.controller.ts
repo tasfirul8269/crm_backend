@@ -5,6 +5,7 @@ import type { Response } from 'express';
 
 @Controller('upload')
 export class UploadController {
+    // Audio proxy endpoint added for CORS bypass
     constructor(private readonly uploadService: UploadService) { }
 
     @Post()
@@ -57,6 +58,47 @@ export class UploadController {
         } catch (error) {
             // Fallback: Redirect to original image if optimization fails
             res.redirect(url);
+        }
+    }
+
+    @Get('audio')
+    async proxyAudio(
+        @Query('url') url: string,
+        @Res() res: Response
+    ) {
+        if (!url) {
+            throw new BadRequestException('URL is required');
+        }
+
+        console.log('Audio proxy request for URL:', url);
+
+        try {
+            // Fetch the audio file from S3
+            const response = await fetch(url);
+
+            console.log('S3 response status:', response.status, response.statusText);
+
+            if (!response.ok) {
+                console.error('S3 fetch failed:', response.status, response.statusText);
+                throw new BadRequestException(`Failed to fetch audio file: ${response.status}`);
+            }
+
+            const contentType = response.headers.get('content-type') || 'audio/mpeg';
+            const buffer = Buffer.from(await response.arrayBuffer());
+
+            console.log('Audio file fetched successfully, size:', buffer.length, 'type:', contentType);
+
+            res.set({
+                'Content-Type': contentType,
+                'Content-Length': buffer.length.toString(),
+                'Accept-Ranges': 'bytes',
+                'Cache-Control': 'public, max-age=86400', // Cache for 1 day
+            });
+
+            res.send(buffer);
+        } catch (error) {
+            console.error('Audio proxy error:', error.message || error);
+            throw new BadRequestException('Failed to proxy audio file: ' + (error.message || 'Unknown error'));
         }
     }
 }
