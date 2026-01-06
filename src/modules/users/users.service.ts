@@ -236,13 +236,37 @@ export class UsersService {
         notificationSoundUrl?: string
     ) {
         const updateData: any = { ...data };
+
+        // If a new file is uploaded, save it to the user's custom sounds library
         if (notificationSoundUrl) {
             updateData.notificationSoundUrl = notificationSoundUrl;
-        }
 
-        // Clean up old file if replacing? 
-        // For simplicity, we won't delete old file immediately unless we want to keep storage clean.
-        // But we should probably check if user had an old file.
+            // Check if this sound already exists in the user's library
+            const existingSound = await this.prisma.notificationSound.findFirst({
+                where: {
+                    userId,
+                    url: notificationSoundUrl
+                }
+            });
+
+            // Only create a new record if it doesn't already exist
+            if (!existingSound) {
+                // Extract filename from URL or use a default name
+                const filename = notificationSoundUrl.split('/').pop() || 'Custom Sound';
+
+                // Create record for the new sound
+                await this.prisma.notificationSound.create({
+                    data: {
+                        userId,
+                        name: filename,
+                        url: notificationSoundUrl
+                    }
+                });
+            }
+        } else if (notificationSoundUrl !== undefined) {
+            // Explicitly clearing the sound
+            updateData.notificationSoundUrl = notificationSoundUrl;
+        }
 
         return this.prisma.user.update({
             where: { id: userId },
@@ -254,6 +278,30 @@ export class UsersService {
                 notificationSoundEnd: true,
                 useCustomNotificationSound: true,
             } as any
+        });
+    }
+
+    async getNotificationSounds(userId: string) {
+        return this.prisma.notificationSound.findMany({
+            where: { userId },
+            orderBy: { createdAt: 'desc' }
+        });
+    }
+
+    async deleteNotificationSound(userId: string, soundId: string) {
+        const sound = await this.prisma.notificationSound.findFirst({
+            where: { id: soundId, userId }
+        });
+
+        if (!sound) {
+            throw new BadRequestException('Sound not found');
+        }
+
+        // Delete file from storage
+        await this.uploadService.deleteFile(sound.url);
+
+        return this.prisma.notificationSound.delete({
+            where: { id: soundId }
         });
     }
 

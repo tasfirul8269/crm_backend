@@ -101,7 +101,7 @@ export class UsersController {
         let notificationSoundUrl: string | undefined;
         if (file) {
             notificationSoundUrl = await this.uploadService.uploadFile(file) || undefined;
-        } else if (body.notificationSoundUrl) {
+        } else if (body.notificationSoundUrl !== undefined) {
             notificationSoundUrl = body.notificationSoundUrl;
         }
 
@@ -114,6 +114,18 @@ export class UsersController {
         }
 
         return this.usersService.updateNotificationSettings(user.id, data, notificationSoundUrl);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Get('me/notification-sounds')
+    async getNotificationSounds(@GetUser() user: any) {
+        return this.usersService.getNotificationSounds(user.id);
+    }
+
+    @UseGuards(JwtAuthGuard)
+    @Delete('me/notification-sounds/:id')
+    async deleteNotificationSound(@GetUser() user: any, @Param('id') id: string) {
+        return this.usersService.deleteNotificationSound(user.id, id);
     }
 
     @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
