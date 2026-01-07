@@ -673,6 +673,46 @@ export class PropertiesService {
             this.logger.error('Failed to create file manager structure', e);
         });
 
+        // Backup Client Details to separate table for data recovery
+        this.prisma.propertyClientDetails.upsert({
+            where: { propertyId: property.id },
+            update: {
+                clientName: property.clientName,
+                nationality: property.nationality,
+                phoneCountry: property.phoneCountry,
+                phoneNumber: property.phoneNumber,
+                nocDocument: fileUrls.nocDocument || null,
+                passportCopy: fileUrls.passportCopy || null,
+                emiratesIdScan: fileUrls.emiratesIdScan || null,
+                titleDeed: fileUrls.titleDeed || null,
+                ownershipStatus: rest.ownershipStatus || null,
+                brokerFee: rest.brokerFee || null,
+                // Google Maps Location
+                address: property.address || null,
+                latitude: property.latitude || null,
+                longitude: property.longitude || null,
+            },
+            create: {
+                propertyId: property.id,
+                clientName: property.clientName,
+                nationality: property.nationality,
+                phoneCountry: property.phoneCountry,
+                phoneNumber: property.phoneNumber,
+                nocDocument: fileUrls.nocDocument || null,
+                passportCopy: fileUrls.passportCopy || null,
+                emiratesIdScan: fileUrls.emiratesIdScan || null,
+                titleDeed: fileUrls.titleDeed || null,
+                ownershipStatus: rest.ownershipStatus || null,
+                brokerFee: rest.brokerFee || null,
+                // Google Maps Location
+                address: property.address || null,
+                latitude: property.latitude || null,
+                longitude: property.longitude || null,
+            },
+        }).catch(e => {
+            this.logger.error('Failed to backup client details', e);
+        });
+
         return property;
     }
 
@@ -786,6 +826,46 @@ export class PropertiesService {
             this.logger.error(`Failed to auto - sync property ${ property.id } on Update`, error);
         });
         */
+
+        // Backup Client Details to separate table for data recovery
+        this.prisma.propertyClientDetails.upsert({
+            where: { propertyId: property.id },
+            update: {
+                clientName: property.clientName,
+                nationality: property.nationality,
+                phoneCountry: property.phoneCountry,
+                phoneNumber: property.phoneNumber,
+                nocDocument: property.nocDocument,
+                passportCopy: property.passportCopy,
+                emiratesIdScan: property.emiratesIdScan,
+                titleDeed: property.titleDeed,
+                ownershipStatus: property.ownershipStatus,
+                brokerFee: property.brokerFee,
+                // Google Maps Location
+                address: property.address,
+                latitude: property.latitude,
+                longitude: property.longitude,
+            },
+            create: {
+                propertyId: property.id,
+                clientName: property.clientName,
+                nationality: property.nationality,
+                phoneCountry: property.phoneCountry,
+                phoneNumber: property.phoneNumber,
+                nocDocument: property.nocDocument,
+                passportCopy: property.passportCopy,
+                emiratesIdScan: property.emiratesIdScan,
+                titleDeed: property.titleDeed,
+                ownershipStatus: property.ownershipStatus,
+                brokerFee: property.brokerFee,
+                // Google Maps Location
+                address: property.address,
+                latitude: property.latitude,
+                longitude: property.longitude,
+            },
+        }).catch(e => {
+            this.logger.error('Failed to backup client details on update', e);
+        });
 
         return property;
     }
@@ -1764,13 +1844,28 @@ export class PropertiesService {
                 });
 
                 if (existing) {
-                    // Update existing
+                    // Update existing - ONLY update PF-synced fields, preserve CRM-only data
+                    // CRM-only fields (NOT sent to PF): clientName, phoneNumber, phoneCountry, nationality,
+                    // nocDocument, passportCopy, emiratesIdScan, titleDeed, ownershipStatus, brokerFee, videoUrl, dldQrCode
+                    const pfSyncedData = {
+                        // PF Integration Fields
+                        pfPublished: propertyData.pfPublished,
+                        pfVerificationStatus: propertyData.pfVerificationStatus,
+                        pfQualityScore: propertyData.pfQualityScore,
+                        pfSyncedAt: propertyData.pfSyncedAt,
+                        pfLocationId: propertyData.pfLocationId,
+                        pfLocationPath: propertyData.pfLocationPath,
+                        // Fields that come FROM PF (read-only from PF perspective)
+                        // Only update these if we want to refresh from PF
+                        // For now, we preserve CRM edits and only sync PF metadata
+                    };
+
                     await this.prisma.property.update({
                         where: { id: existing.id },
-                        data: propertyData,
+                        data: pfSyncedData,
                     });
                 } else {
-                    // Create new
+                    // Create new - use full propertyData for new imports from PF
                     await this.prisma.property.create({
                         data: propertyData,
                     });

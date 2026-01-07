@@ -648,3 +648,34 @@ model NotificationSound {
   url       String
   createdAt DateTime @default(now())
 }
+
+// Property Client Details Backup
+// Stores backup of client details from properties for data recovery
+model PropertyClientDetails {
+  id              String   @id @default(cuid())
+  propertyId      String   @unique  // Reference to the property (one-to-one backup)
+  
+  // Client Details
+  clientName      String?
+  nationality     String?
+  phoneCountry    String?
+  phoneNumber     String?
+  
+  // NOC & Documents
+  nocDocument     String?
+  passportCopy    String?
+  emiratesIdScan  String?
+  titleDeed       String?
+  
+  // Google Maps Location (CRM-only, not sent to PF)
+  address         String?
+  latitude        Float?
+  longitude       Float?
+  
+  // Additional CRM-only fields
+  ownershipStatus String?
+  brokerFee       String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
