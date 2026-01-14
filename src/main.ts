@@ -16,9 +16,9 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ transform: true }));
   app.useGlobalFilters(new HttpExceptionFilter());
   app.enableCors({
-    origin: ['http://localhost:3000', 'https://mateluxy-crm-frontend.vercel.app', 'https://mateluxy-frontend-alpha.vercel.app', 'https://mateluxy-backend-5p27.onrender.com'],
+    origin: ['http://localhost:3000', 'http://localhost:3010', 'https://mateluxy-crm-frontend.vercel.app', 'https://mateluxy-frontend-alpha.vercel.app', 'https://mateluxy-backend-5p27.onrender.com'],
     credentials: true,
   });
-  await app.listen(process.env.PORT ?? 3001);
+  await app.listen(process.env.PORT ?? 6001);
 }
 bootstrap();

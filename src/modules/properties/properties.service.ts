@@ -961,15 +961,16 @@ export class PropertiesService {
                         await this.pfDriver.publishListing(pfListing.id);
                         this.logger.log(`Successfully published listing ${pfListing.id}. Updating CRM status to Published.`);
 
-                    await this.prisma.property.update({
-                        where: { id: propertyId },
-                        data: { pfPublished: true }
-                    });
-                } catch (pubError) {
-                    this.logger.error(`Failed to publish listing ${pfListing.id}. CRM Status remains Unpublished.`, pubError);
+                        await this.prisma.property.update({
+                            where: { id: propertyId },
+                            data: { pfPublished: true }
+                        });
+                    } catch (pubError) {
+                        this.logger.error(`Failed to publish listing ${pfListing.id}. CRM Status remains Unpublished.`, pubError);
+                    }
+                } else {
+                    this.logger.log(`Property ${propertyId} created as DRAFT on PF (shouldPublish: ${shouldPublish})`);
                 }
-            } else {
-                this.logger.log(`Property ${propertyId} created as DRAFT on PF (shouldPublish: ${shouldPublish})`);
             }
 
             // ============ AUTOMATED VERIFICATION SUBMISSION ============
@@ -2001,7 +2002,7 @@ export class PropertiesService {
 
         // Check eligibility first
         this.logger.log(`Checking verification eligibility for property ${propertyId} (Listing: ${property.pfListingId})`);
-        const eligibility = await this.propertyFinderService.checkVerificationEligibility(property.pfListingId);
+        const eligibility = await this.pfDriver.checkVerificationEligibility(property.pfListingId);
 
         this.logger.log(`Eligibility result for ${propertyId}:`, JSON.stringify(eligibility, null, 2));
 
@@ -2043,7 +2044,7 @@ export class PropertiesService {
 
         // Submit for verification
         this.logger.log(`Submitting verification for property ${propertyId} (Listing: ${property.pfListingId})`);
-        const result = await this.propertyFinderService.submitVerification(property.pfListingId, agentPfId);
+        const result = await this.pfDriver.submitListingVerification(property.pfListingId, agentPfId);
 
         this.logger.log(`Verification submitted for ${propertyId}. Result:`, result);
 
@@ -2056,7 +2057,7 @@ export class PropertiesService {
         return {
             success: true,
             message: 'Verification submitted successfully',
-            submissionId: result?.submissionId || result?.id,
+            submissionId: (result as any)?.submissionId || (result as any)?.id,
         };
     }
 
@@ -2100,7 +2101,7 @@ export class PropertiesService {
 
         // Check eligibility with Property Finder API
         try {
-            const eligibility = await this.propertyFinderService.checkVerificationEligibility(property.pfListingId);
+            const eligibility = await this.pfDriver.checkVerificationEligibility(property.pfListingId);
 
             this.logger.log(`Eligibility check for ${propertyId}:`, JSON.stringify(eligibility, null, 2));
 
