@@ -663,6 +663,46 @@ export class PropertiesService {
             this.logger.error('Failed to create file manager structure', e);
         });
 
+        // Backup Client Details to separate table for data recovery
+        this.prisma.propertyClientDetails.upsert({
+            where: { propertyId: property.id },
+            update: {
+                clientName: property.clientName,
+                nationality: property.nationality,
+                phoneCountry: property.phoneCountry,
+                phoneNumber: property.phoneNumber,
+                nocDocument: fileUrls.nocDocument || null,
+                passportCopy: fileUrls.passportCopy || null,
+                emiratesIdScan: fileUrls.emiratesIdScan || null,
+                titleDeed: fileUrls.titleDeed || null,
+                ownershipStatus: rest.ownershipStatus || null,
+                brokerFee: rest.brokerFee || null,
+                // Google Maps Location
+                address: property.address || null,
+                latitude: property.latitude || null,
+                longitude: property.longitude || null,
+            },
+            create: {
+                propertyId: property.id,
+                clientName: property.clientName,
+                nationality: property.nationality,
+                phoneCountry: property.phoneCountry,
+                phoneNumber: property.phoneNumber,
+                nocDocument: fileUrls.nocDocument || null,
+                passportCopy: fileUrls.passportCopy || null,
+                emiratesIdScan: fileUrls.emiratesIdScan || null,
+                titleDeed: fileUrls.titleDeed || null,
+                ownershipStatus: rest.ownershipStatus || null,
+                brokerFee: rest.brokerFee || null,
+                // Google Maps Location
+                address: property.address || null,
+                latitude: property.latitude || null,
+                longitude: property.longitude || null,
+            },
+        }).catch(e => {
+            this.logger.error('Failed to backup client details', e);
+        });
+
         return property;
     }
 
@@ -774,6 +814,46 @@ export class PropertiesService {
             this.logger.error(`Failed to auto - sync property ${property.id} on Update`, error);
         });
 
+        // Backup Client Details to separate table for data recovery
+        this.prisma.propertyClientDetails.upsert({
+            where: { propertyId: property.id },
+            update: {
+                clientName: property.clientName,
+                nationality: property.nationality,
+                phoneCountry: property.phoneCountry,
+                phoneNumber: property.phoneNumber,
+                nocDocument: property.nocDocument,
+                passportCopy: property.passportCopy,
+                emiratesIdScan: property.emiratesIdScan,
+                titleDeed: property.titleDeed,
+                ownershipStatus: property.ownershipStatus,
+                brokerFee: property.brokerFee,
+                // Google Maps Location
+                address: property.address,
+                latitude: property.latitude,
+                longitude: property.longitude,
+            },
+            create: {
+                propertyId: property.id,
+                clientName: property.clientName,
+                nationality: property.nationality,
+                phoneCountry: property.phoneCountry,
+                phoneNumber: property.phoneNumber,
+                nocDocument: property.nocDocument,
+                passportCopy: property.passportCopy,
+                emiratesIdScan: property.emiratesIdScan,
+                titleDeed: property.titleDeed,
+                ownershipStatus: property.ownershipStatus,
+                brokerFee: property.brokerFee,
+                // Google Maps Location
+                address: property.address,
+                latitude: property.latitude,
+                longitude: property.longitude,
+            },
+        }).catch(e => {
+            this.logger.error('Failed to backup client details on update', e);
+        });
+
         return property;
     }
 
@@ -781,8 +861,16 @@ export class PropertiesService {
      * Helper method to sync property to Property Finder after creation
      * This is called asynchronously and errors are logged but don't fail property creation
      */
-    private async syncToPropertyFinderOnCreate(propertyId: string, targetPublishState?: boolean) {
-        this.logger.warn(`*** INITIATING PF SYNC FOR PROPERTY ${propertyId} *** `);
+    private async syncToPropertyFinderOnCreate(propertyId: string, targetPublishState?: boolean | string) {
+        // Normalize: FormData sends booleans as strings 'true'/'false'
+        let shouldPublish: boolean | undefined;
+        if (targetPublishState === true || targetPublishState === 'true') {
+            shouldPublish = true;
+        } else if (targetPublishState === false || targetPublishState === 'false') {
+            shouldPublish = false;
+        }
+
+        this.logger.warn(`*** INITIATING PF SYNC FOR PROPERTY ${propertyId} *** shouldPublish: ${shouldPublish}`);
         try {
             const property = await this.prisma.property.findUnique({
                 where: { id: propertyId },
@@ -873,17 +961,15 @@ export class PropertiesService {
                         await this.pfDriver.publishListing(pfListing.id);
                         this.logger.log(`Successfully published listing ${pfListing.id}. Updating CRM status to Published.`);
 
-                        await this.prisma.property.update({
-                            where: { id: propertyId },
-                            data: { pfPublished: true }
-                        });
-                    } catch (pubError) {
-                        this.logger.error(`Failed to publish listing ${pfListing.id}. CRM Status remains Unpublished.`, pubError);
-                    }
-                } else {
-                    // Start as Draft logic is default, but if false explicitly passed we ensure it.
-                    // Usually creating implies draft.
+                    await this.prisma.property.update({
+                        where: { id: propertyId },
+                        data: { pfPublished: true }
+                    });
+                } catch (pubError) {
+                    this.logger.error(`Failed to publish listing ${pfListing.id}. CRM Status remains Unpublished.`, pubError);
                 }
+            } else {
+                this.logger.log(`Property ${propertyId} created as DRAFT on PF (shouldPublish: ${shouldPublish})`);
             }
 
             // ============ AUTOMATED VERIFICATION SUBMISSION ============
@@ -994,35 +1080,27 @@ export class PropertiesService {
         // Map category: CRM uses 'Residential'/'Commercial', PF uses 'residential'/'commercial'
         const category = (property.category || 'residential').toLowerCase();
 
-        // Map purpose/offering: CRM uses 'Sale'/'Rent', PF uses 'sale'/'rent'
-        // If Project Status is set, it overrides standard offering_type logic for Sale properties
-        let purposeLower = (property.purpose || 'sale').toLowerCase().replace('sell', 'sale');
+        // Map purpose: CRM uses 'Sale'/'Rent', PF uses 'sale'/'rent'
+        const purposeLower = (property.purpose || 'sale').toLowerCase().replace('sell', 'sale');
+
+        // Map Project Status for Sale properties
+        // PF API projectStatus enum: "completed" | "off_plan" | "completed_primary" | "off_plan_primary"
         let projectStatus: string | undefined = undefined;
-        let completionDate: string | undefined = undefined;
 
         if (purposeLower === 'sale' && property.projectStatus) {
-            // Map Project Status based on "Resale - Ready to move", "Resale - Off-plan", "Primary - Ready to move", "Primary - Off-Plan"
-            // Docs:
-            // Resale - Ready to move -> offering_type: sale, project_status: completed
-            // Resale - Off-plan -> offering_type: sale, project_status: off-plan
-            // Primary - Ready to move -> offering_type: primary-sale, project_status: completed
-            // Primary - Off-Plan -> offering_type: primary-sale, project_status: off-plan
-
+            // CRM values: "Resale - Ready to move", "Resale - Off-plan", "Primary - Ready to move", "Primary - Off-Plan"
             const status = property.projectStatus;
+            const isPrimary = status.includes('Primary');
+            const isOffPlan = status.includes('Off-plan') || status.includes('Off-Plan');
 
-            if (status.includes('Primary')) {
-                purposeLower = 'primary-sale';
+            if (isPrimary && isOffPlan) {
+                projectStatus = 'off_plan_primary';
+            } else if (isPrimary && !isOffPlan) {
+                projectStatus = 'completed_primary';
+            } else if (!isPrimary && isOffPlan) {
+                projectStatus = 'off_plan';
             } else {
-                purposeLower = 'sale';
-            }
-
-            if (status.includes('Off-plan') || status.includes('Off-Plan')) {
-                projectStatus = 'off-plan';
-                // Completion Date is required for Off-plan
-                if (property.completionDate) {
-                    completionDate = property.completionDate; // Assuming YYYY-MM format from frontend
-                }
-            } else {
+                // Resale - Ready to move
                 projectStatus = 'completed';
             }
         }
@@ -1134,7 +1212,6 @@ export class PropertiesService {
         // Prepare listing payload according to Property Finder API requirements
         const listing: any = {
             category,
-            offeringType: purposeLower === 'rent' ? 'rent' : 'sale', // Required field per PF API
             type: pfType,
             furnishingType,
             reference: property.reference || property.id,
@@ -1261,16 +1338,9 @@ export class PropertiesService {
             listing.finishingType = property.finishingType.toLowerCase();
         }
 
-        // Add Project Status and Completion Date
+        // Add Project Status (PF enum: completed, off_plan, completed_primary, off_plan_primary)
         if (projectStatus) {
-            listing.project_status = projectStatus;
-        }
-        if (completionDate) {
-            listing.completion_date = completionDate;
-        }
-        // Add payment plan if off-plan (optional but recommended)
-        if (purposeLower === 'primary-sale' || projectStatus === 'off-plan') {
-            listing.payment_plan = 'Contact for details';
+            listing.projectStatus = projectStatus;
         }
 
         return listing;
@@ -1909,6 +1979,158 @@ export class PropertiesService {
         });
 
         return result;
+    }
+
+    /**
+     * Submit property for verification on Property Finder
+     * Only works for published properties with a PF listing ID
+     */
+    async submitVerificationToPropertyFinder(propertyId: string) {
+        const property = await this.prisma.property.findUnique({
+            where: { id: propertyId },
+            include: { assignedAgent: true },
+        });
+
+        if (!property || !property.pfListingId) {
+            throw new NotFoundException(`Property ${propertyId} not found or not synced to PF`);
+        }
+
+        if (!property.pfPublished) {
+            throw new HttpException('Property must be published before submitting for verification', HttpStatus.BAD_REQUEST);
+        }
+
+        // Check eligibility first
+        this.logger.log(`Checking verification eligibility for property ${propertyId} (Listing: ${property.pfListingId})`);
+        const eligibility = await this.propertyFinderService.checkVerificationEligibility(property.pfListingId);
+
+        this.logger.log(`Eligibility result for ${propertyId}:`, JSON.stringify(eligibility, null, 2));
+
+        if (eligibility?.error || (eligibility && !eligibility.eligible)) {
+            // Extract detailed reasons from eligibility response
+            let errorMessage = 'Property is not eligible for verification';
+            const reasons: string[] = [];
+
+            if (eligibility?.message) reasons.push(eligibility.message);
+            if (eligibility?.error) reasons.push(eligibility.error);
+            if (eligibility?.reason) reasons.push(eligibility.reason);
+            if (eligibility?.errors && Array.isArray(eligibility.errors)) {
+                eligibility.errors.forEach((err: any) => {
+                    if (typeof err === 'string') reasons.push(err);
+                    else if (err?.message) reasons.push(err.message);
+                    else if (err?.field && err?.error) reasons.push(`${err.field}: ${err.error}`);
+                });
+            }
+            if (eligibility?.details) {
+                if (typeof eligibility.details === 'string') reasons.push(eligibility.details);
+                else if (eligibility.details.message) reasons.push(eligibility.details.message);
+            }
+
+            // Build comprehensive error message
+            if (reasons.length > 0) {
+                errorMessage = reasons.join('. ');
+            }
+
+            this.logger.warn(`Verification not eligible for ${propertyId}: ${errorMessage}`);
+            throw new HttpException(errorMessage, HttpStatus.BAD_REQUEST);
+        }
+
+        // Get agent's public profile ID for submission
+        const agentPfId = property.assignedAgent?.pfPublicProfileId;
+
+        if (!agentPfId) {
+            throw new HttpException('Agent public profile ID is required for verification submission. Please ensure the assigned agent is synced with Property Finder.', HttpStatus.BAD_REQUEST);
+        }
+
+        // Submit for verification
+        this.logger.log(`Submitting verification for property ${propertyId} (Listing: ${property.pfListingId})`);
+        const result = await this.propertyFinderService.submitVerification(property.pfListingId, agentPfId);
+
+        this.logger.log(`Verification submitted for ${propertyId}. Result:`, result);
+
+        // Update local verification status
+        await this.prisma.property.update({
+            where: { id: propertyId },
+            data: { pfVerificationStatus: 'pending' },
+        });
+
+        return {
+            success: true,
+            message: 'Verification submitted successfully',
+            submissionId: result?.submissionId || result?.id,
+        };
+    }
+
+    /**
+     * Check if property is eligible for verification on Property Finder
+     */
+    async checkVerificationEligibility(propertyId: string) {
+        const property = await this.prisma.property.findUnique({
+            where: { id: propertyId },
+            include: { assignedAgent: true },
+        });
+
+        if (!property) {
+            throw new NotFoundException(`Property ${propertyId} not found`);
+        }
+
+        // Check basic requirements first
+        if (!property.pfListingId) {
+            return {
+                eligible: false,
+                reason: 'Property is not synced to Property Finder yet',
+                autoSubmit: false,
+            };
+        }
+
+        if (!property.pfPublished) {
+            return {
+                eligible: false,
+                reason: 'Property must be published before verification',
+                autoSubmit: false,
+            };
+        }
+
+        if (!property.assignedAgent?.pfPublicProfileId) {
+            return {
+                eligible: false,
+                reason: 'Assigned agent is not synced with Property Finder',
+                autoSubmit: false,
+            };
+        }
+
+        // Check eligibility with Property Finder API
+        try {
+            const eligibility = await this.propertyFinderService.checkVerificationEligibility(property.pfListingId);
+
+            this.logger.log(`Eligibility check for ${propertyId}:`, JSON.stringify(eligibility, null, 2));
+
+            if (eligibility?.error || (eligibility && !eligibility.eligible)) {
+                // Extract reason from response
+                let reason = 'Not eligible for verification';
+                if (eligibility?.message) reason = eligibility.message;
+                else if (eligibility?.reason) reason = eligibility.reason;
+                else if (eligibility?.error) reason = eligibility.error;
+
+                return {
+                    eligible: false,
+                    reason,
+                    autoSubmit: false,
+                };
+            }
+
+            return {
+                eligible: eligibility?.eligible ?? true,
+                reason: eligibility?.eligible ? 'Property is eligible for verification' : (eligibility?.reason || 'Not eligible'),
+                autoSubmit: eligibility?.autoSubmit ?? false,
+            };
+        } catch (error) {
+            this.logger.error(`Failed to check eligibility for ${propertyId}:`, error);
+            return {
+                eligible: false,
+                reason: 'Failed to check eligibility with Property Finder',
+                autoSubmit: false,
+            };
+        }
     }
 
     /**

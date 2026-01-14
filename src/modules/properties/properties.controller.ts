@@ -300,6 +300,16 @@ export class PropertiesController {
         return this.propertiesService.unpublishFromPropertyFinder(id);
     }
 
+    @Post(':id/submit-verification')
+    submitVerificationToPropertyFinder(@Param('id') id: string) {
+        return this.propertiesService.submitVerificationToPropertyFinder(id);
+    }
+
+    @Get(':id/check-verification-eligibility')
+    checkVerificationEligibility(@Param('id') id: string) {
+        return this.propertiesService.checkVerificationEligibility(id);
+    }
+
     @Post(':id/sync-from-pf-listing')
     syncPropertyDetailsFromPf(@Param('id') id: string) {
         return this.propertiesService.syncPropertyDetailsFromPf(id);

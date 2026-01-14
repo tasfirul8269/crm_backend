@@ -103,8 +103,9 @@ export class AgentsController {
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(Role.ADMIN, Role.MODERATOR)
     @Get()
-    findAll(@Query('search') search?: string) {
-        return this.agentsService.findAll(search);
+    findAll(@Query('search') search?: string, @Query('isActive') isActive?: string) {
+        const activeBool = isActive !== undefined ? isActive === 'true' : undefined;
+        return this.agentsService.findAll(search, activeBool);
     }
 
     @UseGuards(JwtAuthGuard, RolesGuard)

@@ -172,207 +172,279 @@ export class NocService {
             doc.on('end', () => resolve(Buffer.concat(chunks)));
             doc.on('error', reject);
 
-            const MARGIN = 35; // Reduced margin
+            const MARGIN = 40;
             const PAGE_WIDTH = 595.28;
             const CONTENT_WIDTH = PAGE_WIDTH - (MARGIN * 2);
             let y = MARGIN;
 
-            // Styles
+            // --- FONTS & COLORS ---
+            const FONTS = {
+                REGULAR: 'Helvetica',
+                BOLD: 'Helvetica-Bold'
+            };
             const COLORS = {
                 PRIMARY: '#000000',
-                SECONDARY: '#6B7280', // Gray-500
-                ACCENT: '#EF4444', // Red-500 (Mateluxy brand approx)
-                BORDER: '#E5E7EB', // Gray-200
+                RED_BG: '#FF0000', // Bright red as per image
+                WHITE: '#FFFFFF',
+                GRAY_LINE: '#000000' // Lines appear black in image
             };
-
-            // Fonts
-            doc.font('Helvetica');
 
             // --- HELPER FUNCTIONS ---
-            const drawLabelValue = (label: string, value: string | number | null | undefined, x: number, y: number, width: number) => {
-                doc.font('Helvetica').fontSize(8).fillColor(COLORS.SECONDARY).text(label.toUpperCase(), x, y);
-                const valStr = value ? String(value) : '-';
-                doc.font('Helvetica-Bold').fontSize(10).fillColor(COLORS.PRIMARY).text(valStr, x, y + 12, { width: width, ellipsis: true });
+            const drawRedSectionHeader = (text: string, currentY: number) => {
+                doc.rect(MARGIN, currentY, CONTENT_WIDTH, 20).fill(COLORS.RED_BG);
+                doc.font(FONTS.BOLD).fontSize(10).fillColor(COLORS.WHITE).text(text, MARGIN + 10, currentY + 5);
+                return currentY + 25;
             };
 
-            const drawSectionTitle = (title: string, topY: number) => {
-                doc.rect(MARGIN, topY, 3, 16).fill(COLORS.ACCENT);
-                doc.font('Helvetica-Bold').fontSize(12).fillColor(COLORS.PRIMARY).text(title, MARGIN + 10, topY + 2);
-                return topY + 30;
-            };
+            // Draw text label and value with underline: "Label:   Value___________" or "Label: ________"
+            // Layout: Label at x, Value starts at valueX, Underline from valueX to valueX+width
+            const drawFieldLine = (label: string, value: string | null | undefined, x: number, yPos: number, labelWidth: number, valueWidth: number, boldLabel: boolean = true) => {
+                doc.font(boldLabel ? FONTS.BOLD : FONTS.REGULAR).fontSize(9).fillColor(COLORS.PRIMARY).text(label, x, yPos);
 
-            const drawDivider = (topY: number) => {
-                doc.moveTo(MARGIN, topY).lineTo(PAGE_WIDTH - MARGIN, topY).strokeColor(COLORS.BORDER).lineWidth(1).stroke();
-                return topY + 20;
-            };
+                const lineStartX = x + labelWidth;
+                const lineEndX = lineStartX + valueWidth;
+                const lineY = yPos + 10;
 
-            const checkPageBreak = (currentY: number, needed: number) => {
-                if (currentY + needed > doc.page.height - MARGIN) {
-                    doc.addPage();
-                    return MARGIN;
+                // Value text centering roughly above line or just plain text
+                if (value) {
+                    doc.font(FONTS.BOLD).fontSize(9).text(String(value), lineStartX + 2, yPos - 1, { width: valueWidth, ellipsis: true });
                 }
-                return currentY;
+
+                // Underline
+                doc.moveTo(lineStartX, lineY).lineTo(lineEndX, lineY).lineWidth(0.5).strokeColor(COLORS.GRAY_LINE).stroke();
+            };
+
+            const drawCheckbox = (label: string, isChecked: boolean, x: number, yPos: number) => {
+                // Circle checkbox
+                doc.circle(x + 5, yPos + 5, 5).lineWidth(1).strokeColor(COLORS.PRIMARY).stroke();
+                if (isChecked) {
+                    doc.circle(x + 5, yPos + 5, 2.5).fillColor(COLORS.PRIMARY).fill();
+                }
+                doc.font(FONTS.BOLD).fontSize(9).fillColor(COLORS.PRIMARY).text(label, x + 15, yPos);
             };
 
             // --- HEADER ---
-            // Logo (Placeholder if missing)
+            // Left Side: Company Info
+            doc.font(FONTS.BOLD).fontSize(16).fillColor(COLORS.PRIMARY).text('Mateluxy Real Estate Broker L.L.C', MARGIN, y);
+            y += 20;
+
+            doc.font(FONTS.REGULAR).fontSize(8).text('Tel: +971 4 572 5420 Add:601 Bay Square 13, Business Bay, Dubai, UAE.', MARGIN, y);
+            y += 12;
+            doc.text('PO. Box: 453467 Email: info@mateluxy.com', MARGIN, y);
+            y += 12;
+            doc.text('Website: www.mateluxy.com', MARGIN, y);
+
+            // Right Side: Logo
             try {
+                // Trying to locate logo - adjusting path assumptions based on typical nestjs structure
+                // Previous code used '../frontend/public/Logo.png' which worked relative to execution context presumably
                 const logoPath = '../frontend/public/Logo.png';
-                doc.image(logoPath, MARGIN, y, { width: 100 });
+                // Logo in image is top right, roughly aligned with text top
+                doc.image(logoPath, PAGE_WIDTH - MARGIN - 70, MARGIN, { width: 60 });
             } catch (e) {
-                doc.font('Helvetica-Bold').fontSize(18).fillColor(COLORS.PRIMARY).text('MATELUXY', MARGIN, y);
+                // Ignore missing logo
             }
 
-            // Company Info (Right aligned)
-            doc.fontSize(8).font('Helvetica').fillColor(COLORS.SECONDARY);
-            const infoY = y;
-            doc.text('Mateluxy Real Estate Broker L.L.C', MARGIN, infoY, { align: 'right' });
-            doc.text('601 Bay Square 13, Business Bay, Dubai', MARGIN, infoY + 12, { align: 'right' });
-            doc.text('+971 4 572 5420 | info@mateluxy.com', MARGIN, infoY + 24, { align: 'right' });
+            y += 20;
+            // Title
+            doc.font(FONTS.BOLD).fontSize(12).text('NOC / LISTING AGREEMENT/ AGREEMENT BETWEEN OWNER & BROKER', MARGIN, y, { width: CONTENT_WIDTH, align: 'center' }); // Centered as best effort or left aligned if preferred? Image looks essentially block justified or left. Let's stick to simple bold line.
+            // Actually image title looks left aligned but spans. The text in image: "NOC / LISTING AGREEMENT/ AGREEMENT BETWEEN OWNER & BROKER"
 
-            y += 45; // Reduced from 60
-            y = drawDivider(y);
+            y += 20;
 
-            // Document Title
-            doc.font('Helvetica-Bold').fontSize(14).fillColor(COLORS.PRIMARY).text('NOC / LISTING AGREEMENT', MARGIN, y, { align: 'center' }); // Reduced font size
-            y += 25; // Reduced from 40
+            // --- LANDLORD / OWNER DETAILS ---
+            y = drawRedSectionHeader('LANDLORD / OWNER DETAILS', y);
+            y += 5;
+
+            // Owners logic - The design shows 1st and 2nd specifically. We'll Map generic owners to these slots.
+            const owner1 = noc.owners?.[0];
+            const owner2 = noc.owners?.[1];
+
+            drawFieldLine('1st Owner Name:', owner1?.name, MARGIN, y, 90, 380);
+            y += 18;
+            drawFieldLine('2nd Owner Name:', owner2?.name, MARGIN, y, 90, 380);
+            y += 18;
+
+            // ID/Passport line - shows generic, usually for 1st owner if space limited or combine? 
+            // Design has "ID/Passport Number: ________________________________________________"
+            // We'll put Owner 1's ID here or both? Let's generic comma separate if multiple, or just Owner 1 as primary.
+            const idVal = noc.owners?.map((o: any) => o.emiratesId).join(', ') || '';
+            drawFieldLine('ID/Passport  Number:', idVal, MARGIN, y, 100, 370);
+            y += 18;
+
+            // Issue Date / Mobile / Expiry - Mixed Line
+            // "Issue Date: ______/______/______   Mobile: ____________________"
+            const issueDate = owner1?.issueDate ? new Date(owner1.issueDate).toLocaleDateString() : '';
+            const mobile = owner1?.phone ? `+${owner1.countryCode || ''} ${owner1.phone}` : '';
+            const expiryDate = owner1?.expiryDate ? new Date(owner1.expiryDate).toLocaleDateString() : '';
+
+            // Issue Date
+            drawFieldLine('Issue Date:', issueDate, MARGIN, y, 60, 150);
+            // Mobile (positioned to right)
+            drawFieldLine('Mobile:', mobile, MARGIN + 250, y, 40, 180);
+            y += 18;
+
+            // Expiry Date
+            drawFieldLine('Expiry Date:', expiryDate, MARGIN, y, 60, 150);
+            y += 25;
 
             // --- PROPERTY DETAILS ---
-            y = drawSectionTitle('PROPERTY DETAILS', y);
+            y = drawRedSectionHeader('PROPERTY DETAILS', y);
+            y += 10;
 
-            // Grid Layout for Property Details
-            // Row 1
-            drawLabelValue('Property Type', noc.propertyType, MARGIN, y, 150);
-            drawLabelValue('Building / Project', noc.buildingProjectName, MARGIN + 160, y, 150);
-            drawLabelValue('Reference / Prop No.', noc.propertyNumber, MARGIN + 320, y, 150);
-            y += 30; // Reduced from 40
+            // Row 1: Checkboxes
+            // Villa, Apartment, Office, Townhouse
+            // We check against noc.propertyType
+            const pType = (noc.propertyType || '').toLowerCase();
+            drawCheckbox('Villa', pType.includes('villa'), MARGIN + 20, y);
+            drawCheckbox('Apartment', pType.includes('apartment'), MARGIN + 120, y);
+            drawCheckbox('Office', pType.includes('office'), MARGIN + 220, y);
+            drawCheckbox('Townhouse', pType.includes('townhouse'), MARGIN + 320, y);
+            y += 20;
 
-            // Row 2
-            drawLabelValue('Community', noc.community, MARGIN, y, 150);
-            drawLabelValue('Street Name', noc.streetName, MARGIN + 160, y, 150);
-            drawLabelValue('Location (Map)', noc.location, MARGIN + 320, y, 150);
-            y += 50; // Increased to handle multi-line location addresses
+            // Row 2: Status Checkboxes (We don't have this data, leaving unchecked or inferring?)
+            // Vacant, Tenanted, Furnished, Unfurnished
+            // user said "no logic change", so we strictly map what we have. We don't have these. Leave unchecked.
+            drawCheckbox('Vacant', false, MARGIN + 20, y);
+            drawCheckbox('Tenanted', false, MARGIN + 120, y);
+            drawCheckbox('Furnished', false, MARGIN + 220, y);
+            drawCheckbox('Unfurnished', false, MARGIN + 320, y);
+            y += 25;
 
-            // Row 3 (Metrics)
-            drawLabelValue('Built-up Area (Sq.ft)', noc.buildUpArea, MARGIN, y, 100);
-            drawLabelValue('Plot Area (Sq.ft)', noc.plotArea, MARGIN + 120, y, 100);
-            drawLabelValue('Bedrooms', noc.bedrooms, MARGIN + 240, y, 80);
-            drawLabelValue('Bathrooms', noc.bathrooms, MARGIN + 330, y, 80);
-            y += 30; // Reduced from 40
+            // Vacating Date
+            drawFieldLine('Vacating Date:', '', MARGIN + 20, y, 70, 150); // No data
+            y += 25;
 
-            // Row 4 (Financials)
-            drawLabelValue('Rental Amount', noc.rentalAmount ? `AED ${noc.rentalAmount}` : null, MARGIN, y, 120);
-            drawLabelValue('Sale Amount', noc.saleAmount ? `AED ${noc.saleAmount}` : null, MARGIN + 140, y, 120);
-            drawLabelValue('Parking', noc.parking, MARGIN + 280, y, 200);
-            y += 35; // Reduced from 50
+            // Fields
+            const fieldLabelWidth = 110;
+            const fieldValueWidth = 360;
+
+            drawFieldLine('Building / Project name :', noc.buildingProjectName, MARGIN, y, 130, 340);
+            y += 18;
+            // Property Number
+            drawFieldLine('Property Number', ':', MARGIN, y, 100, 0); // Hack to draw label with colon
+            drawFieldLine('', noc.propertyNumber, MARGIN + 130, y, 0, 340);
+            y += 18;
+            drawFieldLine('Community', ':', MARGIN, y, 100, 0);
+            drawFieldLine('', noc.community, MARGIN + 130, y, 0, 340);
+            y += 18;
+            drawFieldLine('Street Name', ':', MARGIN, y, 100, 0);
+            drawFieldLine('', noc.streetName, MARGIN + 130, y, 0, 340);
+            y += 25;
+
+            // Split Grid
+            // BUA (SQFT) : _______   Plot (SQFT) : ________
+            drawFieldLine('BUA (SQFT)', ':', MARGIN, y, 80, 0);
+            drawFieldLine('', noc.buildUpArea, MARGIN + 130, y, 0, 100);
+
+            drawFieldLine('Plot (SQFT)', ':', MARGIN + 250, y, 80, 0);
+            drawFieldLine('', noc.plotArea, MARGIN + 340, y, 0, 130);
+            y += 18;
+
+            // Bedrooms : ______ Bathrooms : _______
+            drawFieldLine('Bedrooms', ':', MARGIN, y, 80, 0);
+            drawFieldLine('', noc.bedrooms, MARGIN + 130, y, 0, 100);
+
+            drawFieldLine('Bathrooms', ':', MARGIN + 250, y, 80, 0);
+            drawFieldLine('', noc.bathrooms, MARGIN + 340, y, 0, 130);
+            y += 18;
+
+            // Rental Amount : ______ Parking : _______
+            drawFieldLine('Rental Amount', ':', MARGIN, y, 80, 0);
+            drawFieldLine('', noc.rentalAmount, MARGIN + 130, y, 0, 100);
+
+            drawFieldLine('Parking', ':', MARGIN + 250, y, 80, 0);
+            drawFieldLine('', noc.parking, MARGIN + 340, y, 0, 130);
+            y += 18;
+
+            // Sale Amount : ______
+            drawFieldLine('Sale Amount', ':', MARGIN, y, 80, 0);
+            drawFieldLine('', noc.saleAmount, MARGIN + 130, y, 0, 340);
+            y += 30;
 
 
-            // --- OWNERS DETAILS ---
-            y = checkPageBreak(y, 150);
-            y = drawSectionTitle('OWNERS DETAILS', y);
+            // --- TERMS AND CONDITIONS ---
+            y = drawRedSectionHeader('TERMS AND CONDITIONS', y);
+            y += 10;
 
-            if (noc.owners && noc.owners.length > 0) {
-                noc.owners.forEach((owner: any, index: number) => {
-                    y = checkPageBreak(y, 80);
+            // "The landlord / legal representative has agreed to appoint Mateluxy Real Estate Broker L.L.C"
+            doc.font(FONTS.BOLD).fontSize(9).text('The landlord / legal representative has agreed to appoint', MARGIN, y);
+            doc.font(FONTS.REGULAR).fontSize(10).text('Mateluxy Real Estate Broker L.L.C', MARGIN + 270, y - 1);
+            y += 20;
 
-                    // Owner Card Style
-                    doc.roundedRect(MARGIN, y, CONTENT_WIDTH, 70, 4).fillColor('#F9FAFB').fill(); // Light gray bg
+            // Exclusive / Non-Exclusive Checkboxes
+            const isExclusive = (noc.agreementType || '').toLowerCase() === 'exclusive';
+            drawCheckbox('EXCLUSIVE', isExclusive, MARGIN + 20, y);
+            drawCheckbox('NON-EXCLUSIVE', !isExclusive, MARGIN + 130, y);
+            y += 25;
 
-                    // Owner Name & Valid ID
-                    doc.fillColor(COLORS.PRIMARY);
-                    drawLabelValue('Owner Name', owner.name, MARGIN + 15, y + 10, 200); // Reduced y+15 to y+10
-                    drawLabelValue('Emirates ID / Passport', owner.emiratesId, MARGIN + 230, y + 10, 150);
+            // "Broker to list and advertise the above property for a period till _______"
+            doc.font(FONTS.BOLD).fontSize(9).text('Broker to list and advertise the above property for a period till', MARGIN, y);
+            // Date logic from periodMonths? 
+            let tillDateStr = '';
+            if (noc.periodMonths && noc.agreementDate) {
+                const d = new Date(noc.agreementDate);
+                d.setMonth(d.getMonth() + noc.periodMonths);
+                tillDateStr = d.toLocaleDateString();
+            }
+            drawFieldLine('', tillDateStr, MARGIN + 300, y, 0, 150);
+            y += 20;
 
-                    // Contact
-                    const phone = owner.phone ? `${owner.countryCode || ''} ${owner.phone}` : '-';
-                    drawLabelValue('Contact Number', phone, MARGIN + 15, y + 35, 200); // Reduced y+45 to y+35
-
-                    // Dates
-                    const iDate = owner.issueDate ? new Date(owner.issueDate).toLocaleDateString() : '-';
-                    const eDate = owner.expiryDate ? new Date(owner.expiryDate).toLocaleDateString() : '-';
-                    drawLabelValue('ID Issue Date', iDate, MARGIN + 230, y + 35, 100);
-                    drawLabelValue('ID Expiry Date', eDate, MARGIN + 340, y + 35, 100);
-
-                    y += 70; // Reduced margin from 85 -> 70
-                });
-            } else {
-                doc.font('Helvetica-Oblique').fontSize(10).fillColor(COLORS.SECONDARY).text('No owner details provided.', MARGIN, y);
-                y += 30;
+            // Months checkboxes
+            const months = noc.periodMonths || 0;
+            drawCheckbox('1 MONTH', months === 1, MARGIN + 20, y);
+            drawCheckbox('2 MONTH', months === 2, MARGIN + 130, y);
+            drawCheckbox('3 MONTH', months === 3, MARGIN + 220, y);
+            drawCheckbox('5 MONTH', months === 5, MARGIN + 310, y); // Image says 5 month? odd but okay.
+            y += 20;
+            // Adding 6 Month just in case since backend supports it, but keeping visual clean
+            if (months === 6) {
+                drawCheckbox('6 MONTH', true, MARGIN + 400, y - 20);
             }
             y += 10;
 
-            // --- AGREEMENT TERMS ---
-            y = checkPageBreak(y, 200);
-            y = drawSectionTitle('TERMS & CONDITIONS', y);
+            // Legal Text
+            const disclaimer = "I the undersigned confirm that I am the owner of the above property and / or have the legal authority to sign on behalf of the named owner(s).\n\nShould this property be subject to an offer I/we will notify the brokerage of this\nThis Agreement may be terminated by either party at any time upon seven (7) days written notice to the other party";
+            doc.font(FONTS.REGULAR).fontSize(9).text(disclaimer, MARGIN, y, { width: CONTENT_WIDTH, align: 'justify', lineGap: 3 });
+            y += 70;
 
-            // Row 1
-            const agreementType = (noc.agreementType || 'non-exclusive').toUpperCase();
-            drawLabelValue('Agreement Type', agreementType, MARGIN, y, 150);
-
-            const duration = noc.periodMonths ? `${noc.periodMonths} Month(s)` : '-';
-            drawLabelValue('Duration', duration, MARGIN + 160, y, 150);
-
-            const aDate = noc.agreementDate ? new Date(noc.agreementDate).toLocaleDateString() : '-';
-            drawLabelValue('Agreement Date', aDate, MARGIN + 320, y, 150);
-            y += 30;
-
-            // Disclaimer
-            doc.rect(MARGIN, y, CONTENT_WIDTH, 60).strokeColor(COLORS.BORDER).stroke();
-            doc.font('Helvetica').fontSize(8).fillColor(COLORS.SECONDARY)
-                .text("I/We confirm that I am/we are the owner(s) of the above property and have the legal authority to sign. Should this property be subject to an offer, I/we will notify the brokerage. This agreement may be terminated by either party with seven (7) days written notice.",
-                    MARGIN + 10, y + 10, { width: CONTENT_WIDTH - 20, align: 'justify', lineGap: 2 });
-            y += 75;
 
             // --- SIGNATURES ---
-            y = checkPageBreak(y, 150);
-            y = drawSectionTitle('AUTHORIZATION & SIGNATURES', y);
+            // 1st Owner Name: ________ Signature: ________ Date: _______
 
-            if (noc.owners && noc.owners.length > 0) {
-                // Layout signatures in a grid (2 per row)
-                let xOffset = MARGIN;
+            // Owner 1
+            const o1 = noc.owners?.[0];
+            drawFieldLine('1st Owner Name:', o1?.name, MARGIN, y, 90, 130);
 
-                for (let i = 0; i < noc.owners.length; i++) {
-                    const owner = noc.owners[i];
-
-                    if (y + 120 > doc.page.height - MARGIN) {
-                        doc.addPage();
-                        y = MARGIN;
-                    }
-
-                    // Signature Box
-                    doc.rect(xOffset, y, 240, 100).strokeColor(COLORS.BORDER).stroke();
-
-                    // Name Header
-                    doc.font('Helvetica-Bold').fontSize(10).fillColor(COLORS.PRIMARY).text(owner.name || 'Owner', xOffset + 10, y + 10);
-
-                    // Image
-                    if (owner.signatureUrl) {
-                        try {
-                            const response = await axios.get(owner.signatureUrl, { responseType: 'arraybuffer' });
-                            const imageBuffer = Buffer.from(response.data);
-                            // Draw image centered in box
-                            doc.image(imageBuffer, xOffset + 70, y + 30, { height: 40, width: 100, fit: [100, 40] as any });
-                        } catch (e) {
-                            console.error('Sig load error', e);
-                            doc.fontSize(8).text('(Signature Error)', xOffset + 10, y + 50);
-                        }
-                    } else {
-                        doc.fontSize(8).fillColor('#E5E7EB').text('(No Signature)', xOffset + 100, y + 50);
-                    }
-
-                    // Date
-                    const sDate = owner.signatureDate ? new Date(owner.signatureDate).toLocaleDateString() : 'Date: __________';
-                    doc.font('Helvetica').fontSize(8).fillColor(COLORS.SECONDARY).text(sDate, xOffset + 10, y + 80);
-
-                    // Calculations for grid
-                    if ((i + 1) % 2 === 0) {
-                        xOffset = MARGIN;
-                        y += 110;
-                    } else {
-                        xOffset = MARGIN + 260;
-                    }
-                }
+            // Signature Image for Owner 1 if exists
+            const sigY = y - 10;
+            if (o1?.signatureUrl) {
+                try {
+                    const response = await axios.get(o1.signatureUrl, { responseType: 'arraybuffer' });
+                    const imageBuffer = Buffer.from(response.data);
+                    doc.image(imageBuffer, MARGIN + 280, sigY - 10, { height: 30, width: 80, fit: [80, 30] as any });
+                } catch (e) { }
             }
+            drawFieldLine('Signature:', '', MARGIN + 230, y, 50, 100);
+
+            drawFieldLine('Date:', o1?.signatureDate ? new Date(o1.signatureDate).toLocaleDateString() : '', MARGIN + 390, y, 30, 80);
+            y += 40;
+
+            // Owner 2
+            const o2 = noc.owners?.[1];
+            drawFieldLine('2nd Owner Name:', o2?.name, MARGIN, y, 90, 130);
+
+            // Signature Image for Owner 2 if exists
+            if (o2?.signatureUrl) {
+                try {
+                    const response = await axios.get(o2.signatureUrl, { responseType: 'arraybuffer' });
+                    const imageBuffer = Buffer.from(response.data);
+                    doc.image(imageBuffer, MARGIN + 280, y - 20, { height: 30, width: 80, fit: [80, 30] as any });
+                } catch (e) { }
+            }
+            drawFieldLine('Signature:', '', MARGIN + 230, y, 50, 100);
+            drawFieldLine('Date:', o2?.signatureDate ? new Date(o2.signatureDate).toLocaleDateString() : '', MARGIN + 390, y, 30, 80);
+
 
             doc.end();
         });

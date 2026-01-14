@@ -220,8 +220,8 @@ export class AgentsService {
         return result;
     }
 
-    async findAll(search?: string) {
-        const where = search
+    async findAll(search?: string, isActive?: boolean) {
+        const where: any = search
             ? {
                 OR: [
                     { name: { contains: search, mode: 'insensitive' as const } },
@@ -231,6 +231,10 @@ export class AgentsService {
                 ],
             }
             : {};
+
+        if (isActive !== undefined) {
+            where.isActive = isActive;
+        }
 
         return this.prisma.agent.findMany({
             where,
@@ -599,10 +603,30 @@ export class AgentsService {
                 });
 
                 if (existingAgent) {
-                    // Update existing agent with fresh data from PF
+                    // Update existing - ONLY update PF-synced fields, preserve CRM-only data
+                    // CRM-only fields (NOT sent to PF): address, department, birthdate, visaExpiryDate,
+                    // vcardUrl, licenseDocumentUrl, areasExpertIn, brn, username, password
+                    const pfSyncedData = {
+                        // PF Integration Fields
+                        pfUserId: dataToSync.pfUserId,
+                        pfPublicProfileId: dataToSync.pfPublicProfileId,
+                        isActive: dataToSync.isActive,
+                        // Basic info from PF (can be refreshed)
+                        name: dataToSync.name,
+                        position: dataToSync.position,
+                        phone: dataToSync.phone,
+                        phoneSecondary: dataToSync.phoneSecondary,
+                        whatsapp: dataToSync.whatsapp,
+                        linkedinAddress: dataToSync.linkedinAddress,
+                        experienceSince: dataToSync.experienceSince,
+                        languages: dataToSync.languages,
+                        about: dataToSync.about,
+                        photoUrl: dataToSync.photoUrl,
+                    };
+
                     await this.prisma.agent.update({
                         where: { id: existingAgent.id },
-                        data: dataToSync,
+                        data: pfSyncedData,
                     });
                     syncedCount++;
                 } else {

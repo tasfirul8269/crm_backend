@@ -73,6 +73,7 @@ export class NocController {
             rentalAmount: safeFloat(body.rentalAmount),
             saleAmount: safeFloat(body.saleAmount),
             parking: body.parking,
+            propertyNumber: body.propertyNumber,
 
             // Terms
             agreementType: body.agreementType,
