@@ -27,6 +27,7 @@ model User {
   activityLogs ActivityLog[]
 
   // Notification Settings
+  isNotificationMuted         Boolean  @default(false)
   notificationSoundUrl        String?
   notificationSoundStart      Float?   @default(0)
   notificationSoundEnd        Float?

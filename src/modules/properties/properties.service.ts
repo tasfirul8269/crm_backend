@@ -3,9 +3,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePropertyDto } from './dto/create-property.dto';
 import { UpdatePropertyDto } from './dto/update-property.dto';
 import { ActivityService } from '../activity/activity.service';
-import { PropertyFinderService } from '../property-finder/property-finder.service';
+import { PortalSyncService, PropertyFinderDriver } from '@frooxi-labs/portal-sync'; // New Import
 import { IntegrationsService } from '../integrations/integrations.service';
 import { FileManagerService } from '../file-manager/file-manager.service';
+import { PfLocationService } from '../pf-location/pf-location.service';
 
 @Injectable()
 export class PropertiesService {
@@ -13,11 +14,17 @@ export class PropertiesService {
 
     constructor(
         private prisma: PrismaService,
-        private propertyFinderService: PropertyFinderService,
+        private portalSyncService: PortalSyncService, // Injected
         private activityService: ActivityService,
         private integrationsService: IntegrationsService,
         private fileManagerService: FileManagerService,
+        private pfLocationService: PfLocationService,
     ) { }
+
+    // Helper to get typed driver
+    private get pfDriver(): PropertyFinderDriver {
+        return this.portalSyncService.getDriver('propertyfinder') as PropertyFinderDriver;
+    }
 
     async findAll(filters: {
         status?: string;
@@ -42,24 +49,20 @@ export class PropertiesService {
         const { status, search, agentIds, category, purpose, location, reference, propertyTypes, permitNumber, minPrice, maxPrice, minArea, maxArea, sortBy, sortOrder } = filters;
 
         // Status filter
-        // Status filter
         if (status) {
             const equalStatus = status.toLowerCase();
             if (equalStatus === 'draft') {
                 where.isActive = false;
             } else if (equalStatus === 'unpublished') {
-                // Unpublished means Active in CRM but NOT published to PF
                 where.isActive = true;
                 where.pfPublished = false;
             } else if (equalStatus === 'rejected') {
-                // Rejected/Unverified means Active in CRM but NOT approved by PF
                 where.isActive = true;
                 where.OR = [
                     { pfVerificationStatus: { not: 'approved' } },
                     { pfVerificationStatus: null }
                 ];
             } else if (equalStatus === 'published') {
-                // Published means Active in CRM AND published to PF
                 where.isActive = true;
                 where.pfPublished = true;
             } else if (['SOLD', 'RENTED', 'AVAILABLE'].includes(status.toUpperCase())) {
@@ -163,7 +166,7 @@ export class PropertiesService {
         }
 
         const page = filters.page || 1;
-        const limit = filters.limit || 100; // Default to 100 to avoid breaking legacy clients expecting all
+        const limit = filters.limit || 100;
         const skip = (page - 1) * limit;
 
         const [data, total] = await Promise.all([
@@ -173,7 +176,6 @@ export class PropertiesService {
                     id: true,
                     propertyTitle: true,
                     price: true,
-                    // currency: true, // Assuming AED default or handled in frontend if not in schema
                     address: true,
                     emirate: true,
                     bedrooms: true,
@@ -223,30 +225,17 @@ export class PropertiesService {
 
     async getAggregates() {
         const aggregates = await this.prisma.property.aggregate({
-            _min: {
-                price: true,
-                area: true,
-            },
-            _max: {
-                price: true,
-                area: true,
-            },
+            _min: { price: true, area: true },
+            _max: { price: true, area: true },
         });
 
-        // Get distinct property types
         const types = await this.prisma.property.groupBy({
             by: ['propertyType'],
-            where: {
-                propertyType: { not: null }
-            },
-            _count: {
-                propertyType: true
-            }
+            where: { propertyType: { not: null } },
+            _count: { propertyType: true }
         });
 
-        const propertyTypes = types
-            .map(t => t.propertyType)
-            .filter(t => t !== null) as string[];
+        const propertyTypes = types.map(t => t.propertyType).filter(t => t !== null) as string[];
 
         return {
             minPrice: aggregates._min.price || 0,
@@ -256,6 +245,7 @@ export class PropertiesService {
             propertyTypes: propertyTypes.sort()
         };
     }
+
 
     async getDashboardStats() {
         const now = new Date();
@@ -599,7 +589,7 @@ export class PropertiesService {
 
     async searchPfLocations(search: string) {
         if (!search || search.length < 2) return [];
-        return this.propertyFinderService.searchLocations(search);
+        return this.pfDriver.searchLocations(search);
     }
 
     async create(createPropertyDto: CreatePropertyDto, files: {
@@ -779,13 +769,10 @@ export class PropertiesService {
         });
 
         // Sync to PF with target state
-        // [MODIFIED] Auto-sync removed as per user request. "Save" should only update CRM.
-        // Sync is now handled explicitly via the "Update to PF" button.
-        /*
+        // Auto-sync restored per user request. "Save" updates both CRM and Portal.
         this.syncToPropertyFinder(property.id, targetPublishState).catch((error) => {
-            this.logger.error(`Failed to auto - sync property ${ property.id } on Update`, error);
+            this.logger.error(`Failed to auto - sync property ${property.id} on Update`, error);
         });
-        */
 
         return property;
     }
@@ -845,7 +832,7 @@ export class PropertiesService {
                     // Execute searches until we find a match
                     for (const term of searchTokens) {
                         this.logger.log(`Searching PF Location for term: "${term}"`);
-                        const locations = await this.propertyFinderService.searchLocations(term);
+                        const locations = await this.pfDriver.searchLocations(term);
                         if (locations && locations.length > 0) {
                             locationId = locations[0].id; // Use first match
                             this.logger.log(`Found location ID ${locationId} for search term "${term}"`);
@@ -865,7 +852,7 @@ export class PropertiesService {
             const listingData = await this.mapPropertyToPfListing(property, agentPfId || undefined, locationId);
 
             // Create listing on Property Finder
-            const pfListing = await this.propertyFinderService.createListing(listingData);
+            const pfListing = await this.pfDriver.createListing(listingData);
 
             // Update property with PF listing ID
             await this.prisma.property.update({
@@ -883,7 +870,7 @@ export class PropertiesService {
                 if (targetPublishState === true) {
                     try {
                         this.logger.log(`Attempting to PUBLISH property ${propertyId} (Listing ${pfListing.id}) on PF`);
-                        await this.propertyFinderService.publishListing(pfListing.id);
+                        await this.pfDriver.publishListing(pfListing.id);
                         this.logger.log(`Successfully published listing ${pfListing.id}. Updating CRM status to Published.`);
 
                         await this.prisma.property.update({
@@ -902,7 +889,7 @@ export class PropertiesService {
             // ============ AUTOMATED VERIFICATION SUBMISSION ============
             try {
                 this.logger.log(`Checking verification eligibility for property ${propertyId}(Listing ID: ${pfListing.id})...`);
-                const eligibility = await this.propertyFinderService.checkVerificationEligibility(pfListing.id);
+                const eligibility = await this.pfDriver.checkVerificationEligibility(pfListing.id);
 
                 this.logger.log(`Eligibility result for ${propertyId}: `, eligibility);
 
@@ -911,8 +898,8 @@ export class PropertiesService {
 
                     // We need agent's public profile ID for submission
                     if (agentPfId) {
-                        const verification = await this.propertyFinderService.submitVerification(pfListing.id, agentPfId);
-                        this.logger.log(`Verification submitted successfully for ${propertyId}.Submission ID: ${verification.submissionId} `);
+                        const verification = await this.pfDriver.submitListingVerification(pfListing.id, agentPfId);
+                        this.logger.log(`Verification submitted successfully for ${propertyId}. Response: ${JSON.stringify((verification as any).data)} `);
 
                         // Update local status to pending
                         await this.prisma.property.update({
@@ -1316,7 +1303,7 @@ export class PropertiesService {
         else if (property.address || property.emirate) {
             try {
                 const searchTerm = property.address || property.emirate || '';
-                const locations = await this.propertyFinderService.searchLocations(searchTerm);
+                const locations = await this.pfDriver.searchLocations(searchTerm);
                 if (locations.length > 0) {
                     locationId = locations[0].id;
                     this.logger.log(`Found location ID ${locationId} via search for property ${propertyId}`);
@@ -1349,7 +1336,7 @@ export class PropertiesService {
                 this.logger.log(`Fetching existing listing ${property.pfListingId} from PF for merge...`);
                 let existingListing: any = null;
                 try {
-                    existingListing = await this.propertyFinderService.getListing(property.pfListingId);
+                    existingListing = await this.pfDriver.getListing(property.pfListingId);
                     this.logger.log(`Fetched existing listing: ${JSON.stringify(existingListing?.title || 'No title')} `);
                 } catch (fetchError) {
                     this.logger.warn(`Could not fetch existing listing, will send full replacement`, fetchError);
@@ -1378,7 +1365,7 @@ export class PropertiesService {
 
                 // Step 3: PUSH - Send the merged full object via PUT
                 this.logger.log(`Sending PUT request to PF with merged data...`);
-                await this.propertyFinderService.updateListing(property.pfListingId, mergedData);
+                await this.pfDriver.updateListing(property.pfListingId, mergedData);
                 this.logger.log(`Updated PF listing ${property.pfListingId} for property ${propertyId}`);
 
                 // Notification: Update Success
@@ -1396,7 +1383,7 @@ export class PropertiesService {
 
             } else {
                 // Create new listing
-                const result = await this.propertyFinderService.createListing(listingData);
+                const result = await this.pfDriver.createListing(listingData);
 
                 // Store PF listing ID
                 await this.prisma.property.update({
@@ -1475,17 +1462,20 @@ export class PropertiesService {
             return location.full_name;
         }
 
-        // Priority 2: Build from location_tree array
-        // According to PF docs: location_tree contains hierarchy with levels
-        // Sort by level and join names with ' > '
-        if (location?.location_tree && Array.isArray(location.location_tree)) {
+        // Priority 2: Build from location_tree or tree array
+        const tree = location?.location_tree || location?.tree;
+        if (tree && Array.isArray(tree)) {
             try {
                 // Sort by level (lowest to highest) and extract names
-                const sorted = [...location.location_tree].sort((a, b) => (a.level || 0) - (b.level || 0));
-                const names = sorted.map(item => item.name).filter(name => name && typeof name === 'string');
+                const sorted = [...tree].sort((a, b) => (a.level || 0) - (b.level || 0));
+                const names = sorted.map((item: any) => {
+                    const name = item.name?.en || item.name;
+                    return (name && typeof name === 'string') ? name : null;
+                }).filter(Boolean);
 
                 if (names.length > 0) {
-                    return names.join(' > ');
+                    // Reverse to get "Subcommunity, Community, City"
+                    return names.reverse().join(', ');
                 }
             } catch (error) {
                 this.logger.warn('Failed to build location path from tree', error);
@@ -1519,18 +1509,8 @@ export class PropertiesService {
      * @returns Formatted location path string or null
      */
     private async fetchLocationPath(locationId: number): Promise<string | null> {
-        try {
-            const location = await this.propertyFinderService.getLocationById(locationId);
-            if (!location) {
-                this.logger.warn(`No location found for ID ${locationId}`);
-                return null;
-            }
-
-            return this.buildLocationPathFromTree(location);
-        } catch (error) {
-            this.logger.warn(`Failed to fetch location path for ID ${locationId}`, error);
-            return null;
-        }
+        // Delegate to the specialized service which handles DB caching
+        return this.pfLocationService.getLocationPath(locationId);
     }
 
     /**
@@ -1540,259 +1520,270 @@ export class PropertiesService {
         this.logger.log('Starting sync of listings FROM Property Finder...');
 
         try {
-            // Fetch listings from Property Finder
-            const pfListings = await this.propertyFinderService.getListings();
 
-            // getListings returns a flat array of all listings or an object with results
-            const pfListingsAry = pfListings as any;
-            const listings = Array.isArray(pfListings) ? pfListings :
-                (pfListingsAry?.results || pfListingsAry?.data || []);
+            // Helper function to fetch all pages recursively
+            const fetchAllPages = async (page = 1, allResults: any[] = []): Promise<any[]> => {
+                try {
+                    this.logger.log(`Fetching page ${page} from Property Finder...`);
+                    // pfDriver.getListings(page, perPage)
+                    // We'll use perPage = 100 for efficiency
+                    const response = await this.pfDriver.getListings(page, 100);
 
-            this.logger.log(`Found ${listings.length} listings from Property Finder`);
+                    const results = response.results || [];
+                    const pagination = response.pagination || {};
 
-            let syncedCount = 0;
+                    this.logger.log(`Page ${page}: Found ${results.length} listings. Total pages: ${pagination.totalPages || 'Unknown'}`);
 
-            if (listings.length > 0 && userId) {
-                // Log start of sync or end? Let's log if successful at end.
+                    const combined = [...allResults, ...results];
+
+                    // Check if there are more pages
+                    if (pagination.totalPages && page < pagination.totalPages) {
+                        return fetchAllPages(page + 1, combined);
+                    }
+
+                    // Or fallback check: if we got full page, there might be more (if pagination meta is missing)
+                    if (results.length === 100 && (!pagination.totalPages || page < 50)) {
+                        // Safe guard: limit to 50 pages if no meta to prevent infinite loops
+                        return fetchAllPages(page + 1, combined);
+                    }
+
+                    return combined;
+                } catch (err) {
+                    this.logger.error(`Error fetching page ${page}`, err);
+                    return allResults; // Return what we have so far
+                }
+            };
+
+            const listings = await fetchAllPages(1);
+            this.logger.log(`Total listings to sync: ${listings.length}`);
+
+            // === OPTIMIZATION STAGE 1: Pre-fetch & In-Memory Maps ===
+            this.logger.log('Optimizing sync: Pre-fetching reference data...');
+
+            // 1. Locations (Pre-existing optimization)
+            const locationIds = new Set<number>();
+            listings.forEach((l: any) => {
+                if (l.location?.id) locationIds.add(Number(l.location.id));
+            });
+            const uniqueLocationIds = Array.from(locationIds);
+            const locBatchSize = 10;
+            for (let i = 0; i < uniqueLocationIds.length; i += locBatchSize) {
+                const batch = uniqueLocationIds.slice(i, i + locBatchSize);
+                await Promise.all(batch.map(id => this.pfLocationService.getLocationPath(id)));
             }
 
-            for (const pfListing of listings) {
-                // Price handling
-                // Property Finder uses 'sale' for sales, and 'yearly'/'monthly' for rentals
-                let priceValue = 0;
-                if (pfListing.price) {
-                    const priceType = pfListing.price.type?.toLowerCase() || 'sale';
+            // 2. Agents (Pre-load for O(1) lookup)
+            const allAgents = await this.prisma.agent.findMany({
+                select: { id: true, pfPublicProfileId: true, pfUserId: true }
+            });
+            const agentMapByProfile = new Map<string, string>();
+            const agentMapByUser = new Map<string, string>();
+            allAgents.forEach(a => {
+                if (a.pfPublicProfileId) agentMapByProfile.set(String(a.pfPublicProfileId), a.id);
+                if (a.pfUserId) agentMapByUser.set(String(a.pfUserId), a.id);
+            });
 
-                    if (priceType === 'sale') {
-                        priceValue = pfListing.price.amounts?.sale || pfListing.price.value || 0;
-                    } else if (priceType === 'yearly') {
-                        priceValue = pfListing.price.amounts?.yearly || pfListing.price.value || 0;
-                    } else if (priceType === 'monthly') {
-                        priceValue = pfListing.price.amounts?.monthly || pfListing.price.value || 0;
-                    } else if (priceType === 'rent') {
-                        // Legacy fallback
-                        priceValue = pfListing.price.amounts?.rent || pfListing.price.amounts?.yearly || pfListing.price.value || 0;
-                    } else {
-                        // General fallback - try all possible keys
-                        priceValue = pfListing.price.amounts?.sale ||
-                            pfListing.price.amounts?.yearly ||
-                            pfListing.price.amounts?.monthly ||
-                            pfListing.price.amounts?.rent ||
-                            pfListing.price.value || 0;
-                    }
-                }
+            // 3. Existing Properties (Pre-load to know Update vs Create)
+            const existingProps = await this.prisma.property.findMany({
+                where: { pfListingId: { not: null } },
+                select: { id: true, pfListingId: true }
+            });
+            const existingPropMap = new Map<string, string>();
+            existingProps.forEach(p => {
+                if (p.pfListingId) existingPropMap.set(String(p.pfListingId), p.id);
+            });
 
-                // Extract photos
-                // PF structure in log: { media: { images: [{ original: { url: "..." }, watermarked: { url: "..." } }, ...] } }
-                let coverPhoto = '';
-                let mediaImages: string[] = [];
+            // 4. Bulk Amenities Upsert
+            const allAmenities = new Set<string>();
+            listings.forEach((l: any) => {
+                const ams = Array.isArray(l.amenities) ? l.amenities : [];
+                ams.forEach((a: any) => { if (typeof a === 'string') allAmenities.add(a) });
+            });
 
-                // Check media.images first (new structure)
-                if (pfListing.media?.images && Array.isArray(pfListing.media.images)) {
-                    const images = pfListing.media.images;
-                    const urls = images.map((img: any) => img.original?.url || img.watermarked?.url || img.url).filter((u: any) => typeof u === 'string');
+            // Upsert amenities in parallel batches
+            const uniqueAmenities = Array.from(allAmenities);
+            this.logger.log(`Syncing ${uniqueAmenities.length} unique amenities...`);
+            const amenityChunkSize = 20;
+            for (let i = 0; i < uniqueAmenities.length; i += amenityChunkSize) {
+                const chunk = uniqueAmenities.slice(i, i + amenityChunkSize);
+                await Promise.all(chunk.map(name =>
+                    this.prisma.amenity.upsert({
+                        where: { name },
+                        update: {},
+                        create: { name },
+                    })
+                ));
+            }
 
-                    if (urls.length > 0) {
-                        coverPhoto = urls[0];
-                        mediaImages = urls.slice(1);
-                    }
-                }
-                // Fallback to old 'photos' structure
-                else if (pfListing.photos) {
-                    if (Array.isArray(pfListing.photos)) {
-                        // Simple array of URLs
-                        if (pfListing.photos.length > 0) {
-                            coverPhoto = pfListing.photos[0];
-                            mediaImages = pfListing.photos.slice(1);
+            // === OPTIMIZATION STAGE 2: Parallel Property Processing ===
+            this.logger.log(`Starting parallel sync for ${listings.length} listings...`);
+            let syncedCount = 0;
+            const CHUNK_SIZE = 20; // Process 20 properties in parallel
+
+            for (let i = 0; i < listings.length; i += CHUNK_SIZE) {
+                const chunk = listings.slice(i, i + CHUNK_SIZE);
+
+                await Promise.all(chunk.map(async (pfListing: any) => {
+                    try {
+                        // ... (Logic copied from previous implementation, updated to use Maps) ...
+
+                        // Price handling
+                        let priceValue = 0;
+                        if (pfListing.price) {
+                            const priceType = pfListing.price.type?.toLowerCase() || 'sale';
+                            if (priceType === 'sale') {
+                                priceValue = pfListing.price.amounts?.sale || pfListing.price.value || 0;
+                            } else if (priceType === 'yearly') {
+                                priceValue = pfListing.price.amounts?.yearly || pfListing.price.value || 0;
+                            } else if (priceType === 'monthly') {
+                                priceValue = pfListing.price.amounts?.monthly || pfListing.price.value || 0;
+                            } else if (priceType === 'rent') {
+                                priceValue = pfListing.price.amounts?.rent || pfListing.price.amounts?.yearly || pfListing.price.value || 0;
+                            } else {
+                                priceValue = pfListing.price.amounts?.sale || pfListing.price.amounts?.yearly || pfListing.price.value || 0;
+                            }
                         }
-                    } else if (typeof pfListing.photos === 'object') {
-                        // Nested structure with variants: large/medium/small
-                        const photoVariants = pfListing.photos.large || pfListing.photos.medium || pfListing.photos.small || [];
-                        if (Array.isArray(photoVariants)) {
-                            // Map to URL strings
-                            const urls = photoVariants.map((p: any) => p.default || p.url || p).filter((u: any) => typeof u === 'string');
+
+                        // Extract photos
+                        let coverPhoto = '';
+                        let mediaImages: string[] = [];
+                        if (pfListing.media?.images && Array.isArray(pfListing.media.images)) {
+                            const images = pfListing.media.images;
+                            const urls = images.map((img: any) => img.original?.url || img.watermarked?.url || img.url).filter((u: any) => typeof u === 'string');
                             if (urls.length > 0) {
                                 coverPhoto = urls[0];
                                 mediaImages = urls.slice(1);
                             }
+                        } else if (pfListing.photos) {
+                            // Legacy fallback (as before)
+                            if (Array.isArray(pfListing.photos)) {
+                                if (pfListing.photos.length > 0) {
+                                    coverPhoto = pfListing.photos[0];
+                                    mediaImages = pfListing.photos.slice(1);
+                                }
+                            } else if (typeof pfListing.photos === 'object') {
+                                const photoVariants = pfListing.photos.large || pfListing.photos.medium || pfListing.photos.small || [];
+                                if (Array.isArray(photoVariants)) {
+                                    const urls = photoVariants.map((p: any) => p.default || p.url || p).filter((u: any) => typeof u === 'string');
+                                    if (urls.length > 0) {
+                                        coverPhoto = urls[0];
+                                        mediaImages = urls.slice(1);
+                                    }
+                                }
+                            }
                         }
-                    }
-                }
 
-                // Look up assigned agent
-                // Priority: pfPublicProfileId (assignedTo.id is usually public profile ID) -> pfUserId
-                let assignedAgentId: string | null = null;
-                if (pfListing.assignedTo?.id) {
-                    // Try finding by Public Profile ID first (as per documentation)
-                    let agent = await this.prisma.agent.findFirst({
-                        where: { pfPublicProfileId: String(pfListing.assignedTo.id) },
-                    });
+                        // Agent Lookup (Optimized: In-Memory)
+                        let assignedAgentId: string | null = null;
+                        if (pfListing.assignedTo?.id) {
+                            // Try Public Profile ID first
+                            assignedAgentId = agentMapByProfile.get(String(pfListing.assignedTo.id)) ||
+                                agentMapByUser.get(String(pfListing.assignedTo.id)) ||
+                                null;
+                        }
 
-                    // Fallback to User ID if not found
-                    if (!agent) {
-                        agent = await this.prisma.agent.findFirst({
-                            where: { pfUserId: String(pfListing.assignedTo.id) },
-                        });
-                    }
+                        // Amenities List
+                        const listingAmenities = Array.isArray(pfListing.amenities)
+                            ? pfListing.amenities.filter((a: any) => typeof a === 'string')
+                            : [];
 
-                    if (agent) {
-                        assignedAgentId = agent.id;
-                    }
-                }
+                        // Basic Fields
+                        const priceType = pfListing.price?.type?.toLowerCase() || 'sale';
+                        const isRental = priceType === 'rent' || priceType === 'yearly' || priceType === 'monthly';
+                        const isPublished =
+                            pfListing.portals?.propertyfinder?.isLive === true ||
+                            pfListing.state?.stage === 'live' ||
+                            pfListing.state?.type === 'live' ||
+                            ['published', 'live', 'listed'].includes(pfListing.status?.toLowerCase());
 
-                // Handle Amenities - Upsert into Amenity database
-                const listingAmenities = Array.isArray(pfListing.amenities) ? pfListing.amenities : [];
-                for (const amenityName of listingAmenities) {
-                    if (typeof amenityName === 'string') {
-                        await this.prisma.amenity.upsert({
-                            where: { name: amenityName },
-                            update: {},
-                            create: { name: amenityName },
-                        });
-                    }
-                }
+                        // Project Status
+                        const offeringType = pfListing.offeringType?.toLowerCase() || pfListing.purpose?.toLowerCase() || (isRental ? 'rent' : 'sale');
+                        const pfProjectStatus = pfListing.project_status?.toLowerCase();
+                        let projectStatus: string | null = null;
+                        let completionDate: string | null = null;
 
-                // Map PF listing to CRM property format
-                // Determine if it's a rental: PF uses 'rent', 'yearly', 'monthly' for rentals vs 'sale' for sales
-                const priceType = pfListing.price?.type?.toLowerCase() || 'sale';
-                const isRental = priceType === 'rent' || priceType === 'yearly' || priceType === 'monthly';
+                        if (!isRental) {
+                            if (offeringType === 'primary-sale') {
+                                projectStatus = (pfProjectStatus === 'off-plan' || pfProjectStatus === 'off_plan') ? 'Primary - Off-Plan' : 'Primary - Ready to move';
+                            } else {
+                                projectStatus = (pfProjectStatus === 'off-plan' || pfProjectStatus === 'off_plan') ? 'Resale - Off-plan' : 'Resale - Ready to move';
+                            }
+                            if (pfProjectStatus === 'off-plan' || pfProjectStatus === 'off_plan') {
+                                if (pfListing.completion_date) completionDate = pfListing.completion_date;
+                            }
+                        }
 
-                // Check published status from multiple possible fields
-                const isPublished =
-                    pfListing.portals?.propertyfinder?.isLive === true ||
-                    pfListing.state?.stage === 'live' ||
-                    pfListing.state?.type === 'live' ||
-                    ['published', 'live', 'listed'].includes(pfListing.status?.toLowerCase());
+                        // Construct Property Data
+                        const propertyData: any = {
+                            category: pfListing.category || 'residential',
+                            purpose: isRental ? 'Rent' : 'Sale',
+                            propertyType: pfListing.type || 'apartment',
+                            propertyTitle: pfListing.title?.en || pfListing.title || '',
+                            propertyDescription: pfListing.description?.en || pfListing.description || '',
+                            projectStatus: projectStatus,
+                            completionDate: completionDate,
+                            price: priceValue,
+                            numberOfCheques: pfListing.price?.numberOfCheques ? String(pfListing.price.numberOfCheques) : null,
+                            rentalPeriod: isRental ? (pfListing.price.period || priceType || 'Yearly') : null,
+                            area: parseFloat(pfListing.size) || 0,
+                            bedrooms: parseInt(pfListing.bedrooms) || parseInt(pfListing.bedroom) || 0,
+                            bathrooms: parseInt(pfListing.bathrooms) || parseInt(pfListing.bathroom) || 0,
+                            unitNumber: pfListing.unitNumber ? String(pfListing.unitNumber) : (pfListing.floorNumber ? `Floor ${pfListing.floorNumber} ` : null),
+                            furnishingType: pfListing.furnishingType || null,
+                            hasKitchen: !!pfListing.hasKitchen,
+                            kitchens: pfListing.hasKitchen ? 1 : 0,
+                            parkingSpaces: pfListing.parkingSlots ? String(pfListing.parkingSlots) : null,
+                            plotArea: pfListing.plotSize ? parseFloat(pfListing.plotSize) : null,
+                            address: pfListing.location?.name?.en || pfListing.title?.en || '',
+                            latitude: pfListing.geoPoint?.lat || null,
+                            longitude: pfListing.geoPoint?.lng || null,
+                            reference: pfListing.reference || String(pfListing.id),
+                            dldPermitNumber: pfListing.compliance?.listingAdvertisementNumber || pfListing.permitNumber || null,
+                            coverPhoto: coverPhoto || null,
+                            mediaImages: mediaImages,
+                            amenities: listingAmenities,
+                            assignedAgentId: assignedAgentId,
+                            pfListingId: String(pfListing.id),
+                            pfPublished: isPublished,
+                            pfVerificationStatus: pfListing.verificationStatus || null,
+                            pfQualityScore: pfListing.qualityScore?.value ? parseFloat(pfListing.qualityScore.value) : null,
+                            pfSyncedAt: new Date(),
+                            pfLocationId: pfListing.location?.id ? parseInt(String(pfListing.location.id)) : null,
+                            pfLocationPath: null,
+                            clientName: 'Property Finder Import',
+                            phoneNumber: '',
+                            isActive: true,
+                        };
 
-                // Derive Project Status and Completion Date
-                // PF Fields: offeringType ('sale', 'rent', 'primary-sale'), project_status ('completed', 'off-plan')
-                // Note: PF API structure might vary, 'offeringType' or 'purpose'
-                const offeringType = pfListing.offeringType?.toLowerCase() || pfListing.purpose?.toLowerCase() || (isRental ? 'rent' : 'sale');
-                const pfProjectStatus = pfListing.project_status?.toLowerCase(); // 'completed' or 'off-plan'
+                        // Location Path
+                        let locationPath = this.buildLocationPathFromTree(pfListing.location);
+                        if (!locationPath && propertyData.pfLocationId) {
+                            // Using the optimized service which checks cache first
+                            locationPath = await this.pfLocationService.getLocationPath(propertyData.pfLocationId);
+                        }
+                        propertyData.pfLocationPath = locationPath;
 
-                let projectStatus: string | null = null;
-                let completionDate: string | null = null;
+                        // Upsert (Check Map first)
+                        const existingId = existingPropMap.get(String(pfListing.id));
 
-                if (!isRental) {
-                    if (offeringType === 'primary-sale') {
-                        if (pfProjectStatus === 'off-plan' || pfProjectStatus === 'off_plan') {
-                            projectStatus = 'Primary - Off-Plan';
+                        if (existingId) {
+                            await this.prisma.property.update({
+                                where: { id: existingId },
+                                data: propertyData,
+                            });
                         } else {
-                            projectStatus = 'Primary - Ready to move';
+                            await this.prisma.property.create({
+                                data: propertyData,
+                            });
                         }
-                    } else {
-                        // Resale ('sale')
-                        if (pfProjectStatus === 'off-plan' || pfProjectStatus === 'off_plan') {
-                            projectStatus = 'Resale - Off-plan';
-                        } else {
-                            projectStatus = 'Resale - Ready to move';
-                        }
+                        syncedCount++;
+
+                    } catch (e) {
+                        this.logger.error(`Failed to process listing ${pfListing.id}`, e);
                     }
+                }));
 
-                    // Map Completion Date if Off-plan
-                    if (pfProjectStatus === 'off-plan' || pfProjectStatus === 'off_plan') {
-                        if (pfListing.completion_date) {
-                            completionDate = pfListing.completion_date;
-                        }
-                    }
-                }
-
-                const propertyData: any = {
-                    // Basic info
-                    category: pfListing.category || 'residential',
-                    purpose: isRental ? 'Rent' : 'Sale',
-                    propertyType: pfListing.type || 'apartment',
-                    propertyTitle: pfListing.title?.en || pfListing.title || '',
-                    propertyDescription: pfListing.description?.en || pfListing.description || '',
-
-                    // Project Status Mapping
-                    projectStatus: projectStatus,
-                    completionDate: completionDate,
-
-                    // Pricing
-                    price: priceValue,
-                    numberOfCheques: pfListing.price?.numberOfCheques ? String(pfListing.price.numberOfCheques) : null,
-                    rentalPeriod: isRental ? (pfListing.price.period || priceType || 'Yearly') : null,
-
-                    // Size and rooms
-                    area: parseFloat(pfListing.size) || 0,
-                    bedrooms: parseInt(pfListing.bedrooms) || parseInt(pfListing.bedroom) || 0,
-                    bathrooms: parseInt(pfListing.bathrooms) || parseInt(pfListing.bathroom) || 0,
-
-                    // Detailed Features
-                    unitNumber: pfListing.unitNumber ? String(pfListing.unitNumber) : (pfListing.floorNumber ? `Floor ${pfListing.floorNumber} ` : null),
-                    furnishingType: pfListing.furnishingType || null,
-                    hasKitchen: !!pfListing.hasKitchen,
-                    kitchens: pfListing.hasKitchen ? 1 : 0,
-                    parkingSpaces: pfListing.parkingSlots ? String(pfListing.parkingSlots) : null,
-                    plotArea: pfListing.plotSize ? parseFloat(pfListing.plotSize) : null,
-
-                    // Location - PF often just gives ID, so we might fallback to title or empty if name is missing
-                    address: pfListing.location?.name?.en || pfListing.title?.en || '',
-
-                    // Coordinates
-                    latitude: pfListing.geoPoint?.lat || null,
-                    longitude: pfListing.geoPoint?.lng || null,
-
-                    // Reference & Regulatory
-                    reference: pfListing.reference || String(pfListing.id),
-                    dldPermitNumber: pfListing.compliance?.listingAdvertisementNumber || pfListing.permitNumber || null,
-
-                    // Photos
-                    coverPhoto: coverPhoto || null,
-                    mediaImages: mediaImages,
-
-                    // Relations
-                    amenities: listingAmenities, // Store as string array on Property as per schema
-                    assignedAgentId: assignedAgentId,
-
-                    // PF Integration Fields
-                    pfListingId: String(pfListing.id),
-                    pfPublished: isPublished,
-                    pfVerificationStatus: pfListing.verificationStatus || null,
-                    pfQualityScore: pfListing.qualityScore?.value ? parseFloat(pfListing.qualityScore.value) : null,
-                    pfSyncedAt: new Date(),
-
-                    // PF Location Mapping - Will be populated below
-                    pfLocationId: pfListing.location?.id ? parseInt(String(pfListing.location.id)) : null,
-                    pfLocationPath: null as string | null, // Will be set after building/fetching
-
-                    // Defaults
-                    clientName: 'Property Finder Import',
-                    phoneNumber: '',
-                    isActive: true, // Make active by default if imported
-                };
-
-                // Build location path - first try from listing data, then fetch by ID if needed
-                let locationPath = this.buildLocationPathFromTree(pfListing.location);
-
-                // If path is still missing but we have location ID, fetch from PF locations API
-                if (!locationPath && propertyData.pfLocationId) {
-                    this.logger.log(`Fetching location path for ID ${propertyData.pfLocationId}...`);
-                    locationPath = await this.fetchLocationPath(propertyData.pfLocationId);
-                }
-
-                propertyData.pfLocationPath = locationPath;
-
-                // Check if property already exists by pfListingId
-                const existing = await this.prisma.property.findFirst({
-                    where: { pfListingId: String(pfListing.id) },
-                });
-
-                if (existing) {
-                    // Update existing
-                    await this.prisma.property.update({
-                        where: { id: existing.id },
-                        data: propertyData,
-                    });
-                } else {
-                    // Create new
-                    await this.prisma.property.create({
-                        data: propertyData,
-                    });
-                }
-
-                syncedCount++;
+                this.logger.log(`Processed ${i + chunk.length} / ${listings.length} listings...`);
             }
 
             this.logger.log(`Successfully synced ${syncedCount} listings from Property Finder`);
@@ -1829,7 +1820,7 @@ export class PropertiesService {
         }
 
         try {
-            const pfListing = await this.propertyFinderService.getListing(property.pfListingId);
+            const pfListing = await this.pfDriver.getListing(property.pfListingId);
             if (!pfListing) {
                 throw new NotFoundException('Listing not found on Property Finder');
             }
@@ -1888,7 +1879,7 @@ export class PropertiesService {
             }
         }
 
-        const result = await this.propertyFinderService.publishListing(property.pfListingId!);
+        const result = await this.pfDriver.publishListing(property.pfListingId!);
 
         await this.prisma.property.update({
             where: { id: propertyId },
@@ -1910,7 +1901,7 @@ export class PropertiesService {
             throw new NotFoundException(`Property ${propertyId} not found or not synced to PF`);
         }
 
-        const result = await this.propertyFinderService.unpublishListing(property.pfListingId);
+        const result = await this.pfDriver.unpublishListing(property.pfListingId);
 
         await this.prisma.property.update({
             where: { id: propertyId },
@@ -1952,7 +1943,7 @@ export class PropertiesService {
         }
 
         try {
-            const listing = await this.propertyFinderService.getListing(property.pfListingId);
+            const listing = await this.pfDriver.getListing(property.pfListingId);
 
             // Handle case where listing is null or undefined
             if (!listing) {
@@ -2208,7 +2199,7 @@ export class PropertiesService {
                 }
 
                 // Fetch listing from Property Finder
-                const pfListing = await this.propertyFinderService.getListing(property.pfListingId);
+                const pfListing = await this.pfDriver.getListing(property.pfListingId);
 
                 if (pfListing && pfListing.location) {
                     const pfLocationId = pfListing.location?.id ? parseInt(String(pfListing.location.id)) : null;

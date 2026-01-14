@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Post, Req, Res, UseGuards } from '@nestjs/common';
-import { AuthService } from './auth.service';
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Post, Req, Res, UseGuards, Inject } from '@nestjs/common';
+import { AuthenticationService, AuthContext } from '@frooxi-labs/authentication';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -8,12 +8,18 @@ import { AuthGuard } from '@nestjs/passport';
 
 @Controller('auth')
 export class AuthController {
-    constructor(private readonly authService: AuthService) { }
+    constructor(private readonly authService: AuthenticationService) { }
 
     @Post('login')
     @HttpCode(HttpStatus.OK)
-    async login(@Body() loginDto: LoginDto, @Res({ passthrough: true }) res: Response) {
-        const user = await this.authService.validateUser(loginDto.username, loginDto.password);
+    async login(@Body() loginDto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+        const context: AuthContext = {
+            ipAddress: req.ip || req.socket.remoteAddress,
+            deviceId: req.headers['x-device-id'] as string,
+            userAgent: req.headers['user-agent'],
+        };
+
+        const user = await this.authService.validateUser(loginDto.username, loginDto.password, context);
         if (!user) {
             res.status(HttpStatus.UNAUTHORIZED).json({ message: 'Invalid credentials' });
             return;
@@ -25,7 +31,7 @@ export class AuthController {
             httpOnly: true,
             secure: isProduction,
             sameSite: isProduction ? 'none' : 'lax',
-            maxAge: 15 * 60 * 1000, // 15m
+            maxAge: 24 * 60 * 60 * 1000, // 1d
         });
 
         res.cookie('refresh_token', tokens.refreshToken, {
@@ -50,7 +56,7 @@ export class AuthController {
             httpOnly: true,
             secure: isProduction,
             sameSite: isProduction ? 'none' : 'lax',
-            maxAge: 15 * 60 * 1000, // 15m
+            maxAge: 24 * 60 * 60 * 1000, // 1d
         });
 
         res.cookie('refresh_token', tokens.refreshToken, {
@@ -88,7 +94,7 @@ export class AuthController {
     @Post('forgot-password')
     @HttpCode(HttpStatus.OK)
     async forgotPassword(@Body() dto: ForgotPasswordDto, @Headers('x-device-id') deviceId: string) {
-        return this.authService.forgotPassword(dto.usernameOrEmail, deviceId);
+        return this.authService.initiateForgotPassword(dto.usernameOrEmail, deviceId);
     }
 
     @Post('reset-password')

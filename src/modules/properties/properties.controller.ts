@@ -283,6 +283,8 @@ export class PropertiesController {
         return this.propertiesService.syncFromPropertyFinder(user?.id, ip);
     }
 
+
+
     @Post(':id/sync-to-pf')
     syncToPropertyFinder(@Param('id') id: string) {
         return this.propertiesService.syncToPropertyFinder(id);

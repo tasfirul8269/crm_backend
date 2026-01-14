@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { PropertyFinderService } from '../property-finder/property-finder.service';
+import { PortalSyncService, PropertyFinderDriver } from '@frooxi-labs/portal-sync';
 
 @Injectable()
 export class PfLocationService {
@@ -8,8 +8,12 @@ export class PfLocationService {
 
     constructor(
         private readonly prisma: PrismaService,
-        private readonly propertyFinderService: PropertyFinderService,
+        private readonly portalSyncService: PortalSyncService,
     ) { }
+
+    private get pfDriver(): PropertyFinderDriver {
+        return this.portalSyncService.getDriver('propertyfinder') as PropertyFinderDriver;
+    }
 
     /**
      * Get location path by ID using cache-first strategy
@@ -38,7 +42,7 @@ export class PfLocationService {
 
             // Step 2: Not in cache - fetch from Property Finder API (SLOW)
             this.logger.log(`Location ${locationId} not in cache, fetching from PF API...`);
-            const pfLocation = await this.propertyFinderService.getLocationById(locationId);
+            const pfLocation = await this.pfDriver.getLocationById(locationId);
 
             if (!pfLocation) {
                 // Cache the negative result so we don't keep calling the API
@@ -127,9 +131,10 @@ export class PfLocationService {
             return location.path;
         }
 
-        // Priority 3: Build from location_tree array
-        if (location?.location_tree && Array.isArray(location.location_tree)) {
-            const sorted = [...location.location_tree].sort((a, b) => (a.level || 0) - (b.level || 0));
+        // Priority 3: Build from location_tree or tree array
+        const tree = location?.location_tree || location?.tree;
+        if (tree && Array.isArray(tree)) {
+            const sorted = [...tree].sort((a, b) => (a.level || 0) - (b.level || 0));
             const names = sorted.map((loc: any) => {
                 if (typeof loc.name === 'object' && loc.name.en) return loc.name.en;
                 if (typeof loc.name === 'string') return loc.name;
@@ -137,7 +142,8 @@ export class PfLocationService {
             }).filter(Boolean);
 
             if (names.length > 0) {
-                return names.join(' > ');
+                // Reverse to get "Subcommunity, Community, City"
+                return names.reverse().join(', ');
             }
         }
 

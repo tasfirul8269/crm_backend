@@ -232,6 +232,7 @@ export class UsersService {
             notificationSoundStart?: number;
             notificationSoundEnd?: number;
             useCustomNotificationSound?: boolean;
+            isNotificationMuted?: boolean;
         },
         notificationSoundUrl?: string
     ) {
@@ -277,6 +278,7 @@ export class UsersService {
                 notificationSoundStart: true,
                 notificationSoundEnd: true,
                 useCustomNotificationSound: true,
+                isNotificationMuted: true,
             } as any
         });
     }

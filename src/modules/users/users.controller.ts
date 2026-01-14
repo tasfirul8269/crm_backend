@@ -112,6 +112,9 @@ export class UsersController {
         if (body.useCustomNotificationSound !== undefined) {
             data.useCustomNotificationSound = String(body.useCustomNotificationSound) === 'true';
         }
+        if (body.isNotificationMuted !== undefined) {
+            data.isNotificationMuted = String(body.isNotificationMuted) === 'true';
+        }
 
         return this.usersService.updateNotificationSettings(user.id, data, notificationSoundUrl);
     }

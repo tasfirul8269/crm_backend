@@ -3,7 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateAgentDto } from './dto/create-agent.dto';
 import { UpdateAgentDto } from './dto/update-agent.dto';
 import * as bcrypt from 'bcrypt';
-import { PropertyFinderService } from '../property-finder/property-finder.service';
+import { PortalSyncService, PropertyFinderDriver } from '@frooxi-labs/portal-sync';
 import { getCode } from 'country-list';
 
 import { ActivityService } from '../activity/activity.service';
@@ -15,10 +15,14 @@ export class AgentsService {
 
     constructor(
         private prisma: PrismaService,
-        private propertyFinderService: PropertyFinderService,
+        private portalSyncService: PortalSyncService,
         private activityService: ActivityService,
         private fileManagerService: FileManagerService,
     ) { }
+
+    private get pfDriver(): PropertyFinderDriver {
+        return this.portalSyncService.getDriver('propertyfinder') as PropertyFinderDriver;
+    }
 
     async create(createAgentDto: CreateAgentDto, photoUrl?: string, vcardUrl?: string, licenseDocumentUrl?: string, userId?: string, ipAddress?: string, location?: string) {
         // Hash password
@@ -119,15 +123,15 @@ export class AgentsService {
                 experienceSince: createdAgent.experienceSince || undefined,
             };
 
-            const pfResponse = await this.propertyFinderService.createAgent(pfData);
+            const pfResponse = await this.pfDriver.createAgent(pfData);
 
             // Update Agent with PF IDs
-            if (pfResponse && pfResponse.id) {
+            if (pfResponse && pfResponse.success && pfResponse.externalId) {
                 await this.prisma.agent.update({
                     where: { id: createdAgent.id },
                     data: {
-                        pfUserId: String(pfResponse.id),
-                        pfPublicProfileId: pfResponse.publicProfile?.id ? String(pfResponse.publicProfile.id) : undefined
+                        pfUserId: pfResponse.externalId,
+                        pfPublicProfileId: pfResponse.details?.publicProfileId ? String(pfResponse.details.publicProfileId) : undefined
                     }
                 });
             }
@@ -434,7 +438,7 @@ export class AgentsService {
                 console.log('═══════════════════════════════════════');
 
                 if (agent.pfUserId && Object.keys(pfUpdates).length > 0) {
-                    await this.propertyFinderService.updateAgent(agent.pfUserId, pfUpdates);
+                    await this.pfDriver.updateAgent(agent.pfUserId, pfUpdates);
                 }
             } catch (error) {
                 console.error('Failed to sync agent update to Property Finder:', error.message);
@@ -459,7 +463,7 @@ export class AgentsService {
         // Deactivate in Property Finder before deleting from CRM
         if (agent.pfUserId) {
             try {
-                await this.propertyFinderService.deactivateAgent(agent.pfUserId);
+                await this.pfDriver.deactivateAgent(agent.pfUserId);
                 this.logger.log(`Agent ${agent.name} (PF ID: ${agent.pfUserId}) deactivated in Property Finder`);
             } catch (error) {
                 this.logger.error(`Failed to deactivate agent in Property Finder: ${error.message}`);
@@ -491,7 +495,7 @@ export class AgentsService {
 
         if (agent.pfUserId) {
             try {
-                await this.propertyFinderService.activateAgent(agent.pfUserId);
+                await this.pfDriver.activateAgent(agent.pfUserId);
             } catch (error) {
                 this.logger.error(`Failed to activate agent in Property Finder: ${error.message}`);
             }
@@ -519,7 +523,7 @@ export class AgentsService {
 
         if (agent.pfUserId) {
             try {
-                await this.propertyFinderService.deactivateAgent(agent.pfUserId);
+                await this.pfDriver.deactivateAgent(agent.pfUserId);
             } catch (error) {
                 this.logger.error(`Failed to deactivate agent in Property Finder: ${error.message}`);
             }
@@ -539,9 +543,9 @@ export class AgentsService {
 
     async syncFromPropertyFinder(userId?: string, ipAddress?: string, location?: string) {
         try {
-            const pfAgents = await this.propertyFinderService.getAgents();
+            const pfAgents = await this.pfDriver.getAgents();
 
-            const agentsList = pfAgents.data || [];
+            const agentsList = pfAgents || [];
 
             let syncedCount = 0;
 
@@ -654,7 +658,7 @@ export class AgentsService {
 
         try {
             // Submit verification to Property Finder
-            await this.propertyFinderService.submitVerification(
+            await this.pfDriver.submitAgentVerification(
                 agent.pfPublicProfileId,
                 agent.phone,
                 agent.licenseDocumentUrl
