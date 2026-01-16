@@ -56,6 +56,7 @@ import { PortalsModule } from './modules/portals/portals.module';
     AgentsModule,
     OffPlanPropertiesModule,
     AmenitiesModule,
+    DraftsModule, // Must be before PropertiesModule so /properties/drafts matches before /properties/:id
     PropertiesModule,
     LeadsModule,
     PrismaModule,
@@ -65,7 +66,6 @@ import { PortalsModule } from './modules/portals/portals.module';
     ActivityModule,
     SchedulerModule,
     UploadModule,
-    DraftsModule,
     NocModule,
     AiModule,
     FileManagerModule,
