@@ -6,8 +6,10 @@ import { JwtModule } from '@nestjs/jwt';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { RefreshStrategy } from './strategies/refresh.strategy';
 
+import { EmailModule } from '../../providers/email/email.module';
+
 @Module({
-  imports: [UsersModule, JwtModule.register({})],
+  imports: [UsersModule, JwtModule.register({}), EmailModule],
   controllers: [AuthController],
   providers: [JwtStrategy, RefreshStrategy],
   exports: [],

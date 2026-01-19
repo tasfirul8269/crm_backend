@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Post, Req, Res, UseGuards, Inject } from '@nestjs/common';
 import { AuthenticationService, AuthContext } from '@frooxi-labs/authentication';
+import { EmailService } from '../../providers/email/email.service';
 import { LoginDto } from './dto/login.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -8,7 +9,10 @@ import { AuthGuard } from '@nestjs/passport';
 
 @Controller('auth')
 export class AuthController {
-    constructor(private readonly authService: AuthenticationService) { }
+    constructor(
+        private readonly authService: AuthenticationService,
+        private readonly emailService: EmailService
+    ) { }
 
     @Post('login')
     @HttpCode(HttpStatus.OK)
@@ -94,7 +98,18 @@ export class AuthController {
     @Post('forgot-password')
     @HttpCode(HttpStatus.OK)
     async forgotPassword(@Body() dto: ForgotPasswordDto, @Headers('x-device-id') deviceId: string) {
-        return this.authService.initiateForgotPassword(dto.usernameOrEmail, deviceId);
+        const result = await this.authService.initiateForgotPassword(dto.usernameOrEmail, deviceId);
+
+        // If an OTP was generated (meaning user exists), send it via email
+        if (result.success && result.rawOtp) {
+            await this.emailService.sendOtpEmail(result.email, result.rawOtp);
+        }
+
+        // SANITIZATION: Never return the OTP in the response
+        return {
+            success: true,
+            message: 'If an account with that email exists, a password reset code has been sent.'
+        };
     }
 
     @Post('reset-password')
