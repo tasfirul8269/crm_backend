@@ -1775,39 +1775,49 @@ export class PropertiesService {
                             }
                         }
 
+                        // Helper to sanitize strings - removes null bytes and problematic chars
+                        // that can cause PostgreSQL "insufficient data left in message" errors
+                        const sanitizeString = (str: any): string => {
+                            if (str === null || str === undefined) return '';
+                            const s = String(str);
+                            // Remove null bytes, ASCII control chars (except newlines/tabs)
+                            return s.replace(/\x00/g, '')
+                                .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F]/g, '');
+                        };
+
                         // Construct Property Data
                         const propertyData: any = {
-                            category: pfListing.category || 'residential',
+                            category: sanitizeString(pfListing.category) || 'residential',
                             purpose: isRental ? 'Rent' : 'Sale',
-                            propertyType: pfListing.type || 'apartment',
-                            propertyTitle: pfListing.title?.en || pfListing.title || '',
-                            propertyDescription: pfListing.description?.en || pfListing.description || '',
+                            propertyType: sanitizeString(pfListing.type) || 'apartment',
+                            propertyTitle: sanitizeString(pfListing.title?.en || pfListing.title) || '',
+                            propertyDescription: sanitizeString(pfListing.description?.en || pfListing.description) || '',
                             projectStatus: projectStatus,
                             completionDate: completionDate,
                             price: priceValue,
-                            numberOfCheques: pfListing.price?.numberOfCheques ? String(pfListing.price.numberOfCheques) : null,
-                            rentalPeriod: isRental ? (pfListing.price.period || priceType || 'Yearly') : null,
+                            numberOfCheques: pfListing.price?.numberOfCheques ? sanitizeString(pfListing.price.numberOfCheques) : null,
+                            rentalPeriod: isRental ? sanitizeString(pfListing.price.period || priceType || 'Yearly') : null,
                             area: parseFloat(pfListing.size) || 0,
-                            bedrooms: String(parseInt(pfListing.bedrooms) || parseInt(pfListing.bedroom) || 0),
+                            bedrooms: sanitizeString(String(parseInt(pfListing.bedrooms) || parseInt(pfListing.bedroom) || 0)),
                             bathrooms: parseInt(pfListing.bathrooms) || parseInt(pfListing.bathroom) || 0,
-                            unitNumber: pfListing.unitNumber ? String(pfListing.unitNumber) : (pfListing.floorNumber ? `Floor ${pfListing.floorNumber} ` : null),
-                            furnishingType: pfListing.furnishingType || null,
+                            unitNumber: pfListing.unitNumber ? sanitizeString(pfListing.unitNumber) : (pfListing.floorNumber ? `Floor ${pfListing.floorNumber} ` : null),
+                            furnishingType: sanitizeString(pfListing.furnishingType) || null,
                             hasKitchen: !!pfListing.hasKitchen,
                             kitchens: pfListing.hasKitchen ? 1 : 0,
-                            parkingSpaces: pfListing.parkingSlots ? String(pfListing.parkingSlots) : null,
+                            parkingSpaces: pfListing.parkingSlots ? sanitizeString(pfListing.parkingSlots) : null,
                             plotArea: pfListing.plotSize ? parseFloat(pfListing.plotSize) : null,
-                            address: pfListing.location?.name?.en || pfListing.title?.en || '',
+                            address: sanitizeString(pfListing.location?.name?.en || pfListing.title?.en) || '',
                             latitude: pfListing.geoPoint?.lat || null,
                             longitude: pfListing.geoPoint?.lng || null,
-                            reference: pfListing.reference || String(pfListing.id),
-                            dldPermitNumber: pfListing.compliance?.listingAdvertisementNumber || pfListing.permitNumber || null,
-                            coverPhoto: coverPhoto || null,
-                            mediaImages: mediaImages,
-                            amenities: listingAmenities,
+                            reference: sanitizeString(pfListing.reference || String(pfListing.id)),
+                            dldPermitNumber: sanitizeString(pfListing.compliance?.listingAdvertisementNumber || pfListing.permitNumber) || null,
+                            coverPhoto: sanitizeString(coverPhoto) || null,
+                            mediaImages: mediaImages.map((url: string) => sanitizeString(url)),
+                            amenities: listingAmenities.map((a: string) => sanitizeString(a)),
                             assignedAgentId: assignedAgentId,
-                            pfListingId: String(pfListing.id),
+                            pfListingId: sanitizeString(pfListing.id),
                             pfPublished: isPublished,
-                            pfVerificationStatus: pfListing.verificationStatus || null,
+                            pfVerificationStatus: sanitizeString(pfListing.verificationStatus) || null,
                             pfQualityScore: pfListing.qualityScore?.value ? parseFloat(pfListing.qualityScore.value) : null,
                             pfSyncedAt: new Date(),
                             pfLocationId: pfListing.location?.id ? parseInt(String(pfListing.location.id)) : null,
@@ -1823,7 +1833,7 @@ export class PropertiesService {
                             // Using the optimized service which checks cache first
                             locationPath = await this.pfLocationService.getLocationPath(propertyData.pfLocationId);
                         }
-                        propertyData.pfLocationPath = locationPath;
+                        propertyData.pfLocationPath = locationPath ? sanitizeString(locationPath) : null;
 
                         // Upsert (Check Map first)
                         const existingId = existingPropMap.get(String(pfListing.id));
