@@ -40,7 +40,7 @@ export class CrmPortalMapper implements IPortalMapper {
                 en: property.propertyDescription || '',
             },
             specifications: {
-                bedrooms: property.bedrooms || 0,
+                bedrooms: property.bedrooms,
                 bathrooms: property.bathrooms || 0,
                 size: property.area || 0,
                 sizeUnit: 'sqft',

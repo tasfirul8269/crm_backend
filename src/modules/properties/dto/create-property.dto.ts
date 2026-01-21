@@ -47,9 +47,8 @@ export class CreatePropertyDto {
     area?: number;
 
     @IsOptional()
-    @Transform(({ value }) => { const v = parseInt(value); return isNaN(v) ? undefined : v; })
-    @IsNumber()
-    bedrooms?: number;
+    @IsString()
+    bedrooms?: string;
 
     @IsOptional()
     @Transform(({ value }) => { const v = parseInt(value); return isNaN(v) ? undefined : v; })

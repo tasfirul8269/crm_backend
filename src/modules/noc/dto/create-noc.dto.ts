@@ -64,8 +64,8 @@ export class CreateNocDto {
     plotArea?: number;
 
     @IsOptional()
-    @IsNumber()
-    bedrooms?: number;
+    @IsString()
+    bedrooms?: string;
 
     @IsOptional()
     @IsNumber()

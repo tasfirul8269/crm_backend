@@ -38,9 +38,8 @@ export class CreateOffPlanPropertyDto {
     area?: number;
 
     @IsOptional()
-    @IsNumber()
-    @Min(0)
-    bedrooms?: number;
+    @IsString()
+    bedrooms?: string;
 
     @IsOptional()
     @IsNumber()

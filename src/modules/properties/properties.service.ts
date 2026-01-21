@@ -618,7 +618,7 @@ export class PropertiesService {
         const { amenities, assignedAgentId, pfPublished, ...rest } = data;
 
         // Create property in CRM
-        // VERIFIED PUBLISH: Always start as unpublished in DB unless verified later
+        // VERIFIED PUBLISH: Always start as unpublished in DB unless verified later (Force Type Check)
         const property = await this.prisma.property.create({
             data: {
                 ...rest,
@@ -731,7 +731,7 @@ export class PropertiesService {
         }
 
         // Handle numeric fields just like create
-        const numericFields = ['plotArea', 'area', 'bedrooms', 'kitchens', 'bathrooms', 'price', 'latitude', 'longitude'];
+        const numericFields = ['plotArea', 'area', 'kitchens', 'bathrooms', 'price', 'latitude', 'longitude'];
         numericFields.forEach(field => {
             if (data[field] !== undefined) {
                 const updatedVal = parseFloat(data[field]);
