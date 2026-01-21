@@ -5,6 +5,8 @@ import { FileManagerService } from '../file-manager/file-manager.service';
 import { CreateNocDto } from './dto/create-noc.dto';
 import PDFDocument from 'pdfkit';
 import axios from 'axios';
+import * as path from 'path';
+import * as fs from 'fs';
 
 @Injectable()
 export class NocService {
@@ -236,13 +238,18 @@ export class NocService {
 
             // Right Side: Logo
             try {
-                // Trying to locate logo - adjusting path assumptions based on typical nestjs structure
-                // Previous code used '../frontend/public/Logo.png' which worked relative to execution context presumably
-                const logoPath = '../frontend/public/Logo.png';
-                // Logo in image is top right, roughly aligned with text top
-                doc.image(logoPath, PAGE_WIDTH - MARGIN - 70, MARGIN, { width: 60 });
+                // Construct path relative to the backend root (assuming process.cwd() is Backend root)
+                // Go up one level to project root, then into frontend/public
+                const logoPath = path.resolve(process.cwd(), '../frontend/public/Logo.png');
+
+                if (fs.existsSync(logoPath)) {
+                    // Logo in image is top right, roughly aligned with text top
+                    doc.image(logoPath, PAGE_WIDTH - MARGIN - 70, MARGIN, { width: 60 });
+                } else {
+                    console.warn(`Logo file not found at path: ${logoPath}`);
+                }
             } catch (e) {
-                // Ignore missing logo
+                console.error('Error adding logo to PDF:', e);
             }
 
             y += 20;
@@ -275,7 +282,8 @@ export class NocService {
             // Issue Date / Mobile / Expiry - Mixed Line
             // "Issue Date: ______/______/______   Mobile: ____________________"
             const issueDate = owner1?.issueDate ? new Date(owner1.issueDate).toLocaleDateString() : '';
-            const mobile = owner1?.phone ? `+${owner1.countryCode || ''} ${owner1.phone}` : '';
+            const dialCode = getDialCode(owner1?.countryCode);
+            const mobile = owner1?.phone ? `${dialCode} ${owner1.phone}` : '';
             const expiryDate = owner1?.expiryDate ? new Date(owner1.expiryDate).toLocaleDateString() : '';
 
             // Issue Date
@@ -470,8 +478,58 @@ export class NocService {
     }
 }
 
+
 function getOrdinal(n: number) {
     const s = ["th", "st", "nd", "rd"];
     const v = n % 100;
     return s[(v - 20) % 10] || s[v] || s[0];
+}
+
+const COUNTRIES = [
+    { name: "United Arab Emirates", code: "AE", dial_code: "+971" },
+    { name: "United States", code: "US", dial_code: "+1" },
+    { name: "United Kingdom", code: "GB", dial_code: "+44" },
+    { name: "Canada", code: "CA", dial_code: "+1" },
+    { name: "India", code: "IN", dial_code: "+91" },
+    { name: "Pakistan", code: "PK", dial_code: "+92" },
+    { name: "Bangladesh", code: "BD", dial_code: "+880" },
+    { name: "Saudi Arabia", code: "SA", dial_code: "+966" },
+    { name: "Qatar", code: "QA", dial_code: "+974" },
+    { name: "Kuwait", code: "KW", dial_code: "+965" },
+    { name: "Bahrain", code: "BH", dial_code: "+973" },
+    { name: "Oman", code: "OM", dial_code: "+968" },
+    { name: "Egypt", code: "EG", dial_code: "+20" },
+    { name: "Jordan", code: "JO", dial_code: "+962" },
+    { name: "Lebanon", code: "LB", dial_code: "+961" },
+    { name: "France", code: "FR", dial_code: "+33" },
+    { name: "Germany", code: "DE", dial_code: "+49" },
+    { name: "Italy", code: "IT", dial_code: "+39" },
+    { name: "Spain", code: "ES", dial_code: "+34" },
+    { name: "Russia", code: "RU", dial_code: "+7" },
+    { name: "China", code: "CN", dial_code: "+86" },
+    { name: "Japan", code: "JP", dial_code: "+81" },
+    { name: "South Korea", code: "KR", dial_code: "+82" },
+    { name: "Singapore", code: "SG", dial_code: "+65" },
+    { name: "Malaysia", code: "MY", dial_code: "+60" },
+    { name: "Indonesia", code: "ID", dial_code: "+62" },
+    { name: "Philippines", code: "PH", dial_code: "+63" },
+    { name: "Vietnam", code: "VN", dial_code: "+84" },
+    { name: "Thailand", code: "TH", dial_code: "+66" },
+    { name: "Australia", code: "AU", dial_code: "+61" },
+    { name: "New Zealand", code: "NZ", dial_code: "+64" },
+    { name: "Turkey", code: "TR", dial_code: "+90" },
+    { name: "South Africa", code: "ZA", dial_code: "+27" },
+    { name: "Nigeria", code: "NG", dial_code: "+234" },
+    { name: "Brazil", code: "BR", dial_code: "+55" },
+    { name: "Mexico", code: "MX", dial_code: "+52" },
+    { name: "Argentina", code: "AR", dial_code: "+54" },
+];
+
+function getDialCode(countryCode: string | undefined): string {
+    if (!countryCode) return '';
+    // If it already looks like a dial code (starts with + or contains numbers), return it
+    if (countryCode.startsWith('+') || /\d/.test(countryCode)) return countryCode;
+
+    const country = COUNTRIES.find(c => c.code.toLowerCase() === countryCode.toLowerCase());
+    return country ? country.dial_code : countryCode;
 }

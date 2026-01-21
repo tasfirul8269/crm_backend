@@ -672,4 +672,30 @@ export class FileManagerService implements OnModuleInit {
             }
         });
     }
+    async getItemPath(id: string, type: 'file' | 'folder'): Promise<string> {
+        let currentFolderId: string | null = null;
+
+        if (type === 'file') {
+            const file = await this.prisma.file.findUnique({ where: { id }, select: { folderId: true } });
+            if (!file) throw new Error('File not found');
+            currentFolderId = file.folderId;
+        } else {
+            const folder = await this.prisma.folder.findUnique({ where: { id }, select: { parentId: true } });
+            if (!folder) throw new Error('Folder not found');
+            currentFolderId = folder.parentId;
+        }
+
+        if (!currentFolderId) return 'Root';
+
+        const pathSegments: string[] = [];
+        let current = await this.prisma.folder.findUnique({ where: { id: currentFolderId } });
+
+        while (current) {
+            pathSegments.unshift(current.name);
+            if (!current.parentId) break;
+            current = await this.prisma.folder.findUnique({ where: { id: current.parentId } });
+        }
+
+        return 'Root/' + pathSegments.join('/');
+    }
 }

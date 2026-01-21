@@ -13,6 +13,11 @@ export class FileManagerController {
         return this.fileManagerService.getFolderContents(folderId);
     }
 
+    @Get('item-path')
+    async getItemPath(@Query('id') id: string, @Query('type') type: 'file' | 'folder') {
+        return { path: await this.fileManagerService.getItemPath(id, type) };
+    }
+
     @Post('migrate')
     async migrateData() {
         return this.fileManagerService.migrateAllData();
