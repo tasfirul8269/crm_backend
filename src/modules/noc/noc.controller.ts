@@ -57,6 +57,11 @@ export class NocController {
             return isNaN(parsed) ? undefined : parsed;
         };
 
+        const safeString = (val: any) => {
+            if (val === undefined || val === null || val === '') return undefined;
+            return String(val);
+        };
+
         // 3. Construct DTO
         const createNocDto: CreateNocDto = {
             owners: owners,
@@ -68,7 +73,7 @@ export class NocController {
             streetName: body.streetName,
             buildUpArea: safeFloat(body.buildUpArea),
             plotArea: safeFloat(body.plotArea),
-            bedrooms: safeInt(body.bedrooms),
+            bedrooms: safeString(body.bedrooms),
             bathrooms: safeInt(body.bathrooms),
             rentalAmount: safeFloat(body.rentalAmount),
             saleAmount: safeFloat(body.saleAmount),

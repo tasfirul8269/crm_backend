@@ -65,8 +65,8 @@ export class CreateLeadDto {
     developer?: string;
 
     @IsOptional()
-    @IsNumber()
-    bedrooms?: number;
+    @IsString()
+    bedrooms?: string;
 
     @IsOptional()
     @IsNumber()

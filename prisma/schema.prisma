@@ -82,7 +82,7 @@ model OffPlanProperty {
   propertyType      String[]  // Changed to array to support multiple types
   plotArea          Float?
   area              Float?
-  bedrooms          Int?
+  bedrooms          String?
   kitchens          Int?
   bathrooms         Int?
   
@@ -227,7 +227,7 @@ model Property {
   propertyType      String?
   plotArea          Float?
   area              Float?
-  bedrooms          Int?
+  bedrooms          String?
   kitchens          Int?
   bathrooms         Int?
   unitNumber        String?
@@ -346,7 +346,7 @@ model Lead {
   district          String?
   propertyType      String?
   developer         String?
-  bedrooms          Int?
+  bedrooms          String?
   budgetFrom        Float?
   budgetTo          Float?
   areaFrom          String?
@@ -454,7 +454,7 @@ model Noc {
   streetName          String?
   buildUpArea         Float?
   plotArea            Float?
-  bedrooms            Int?
+  bedrooms            String?
   bathrooms           Int?
   rentalAmount        Float?
   saleAmount          Float?
