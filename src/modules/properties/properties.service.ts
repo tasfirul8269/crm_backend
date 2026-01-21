@@ -1785,11 +1785,46 @@ export class PropertiesService {
                                 .replace(/[\x01-\x08\x0B\x0C\x0E-\x1F]/g, '');
                         };
 
+                        // Map uaeEmirate to emirate with proper capitalization
+                        const mapEmirate = (uaeEmirate: string | undefined): string | null => {
+                            if (!uaeEmirate) return null;
+                            const emirateMap: Record<string, string> = {
+                                'dubai': 'Dubai',
+                                'abu_dhabi': 'Abu Dhabi',
+                                'northern_emirates': 'Sharjah', // Default, can be Sharjah/Ajman/RAK/Fujairah/UAQ
+                                'sharjah': 'Sharjah',
+                                'ajman': 'Ajman',
+                                'ras_al_khaimah': 'Ras Al Khaimah',
+                                'fujairah': 'Fujairah',
+                                'umm_al_quwain': 'Umm Al Quwain',
+                            };
+                            return emirateMap[uaeEmirate.toLowerCase()] || uaeEmirate;
+                        };
+
+                        // Map propertyType with proper capitalization
+                        const mapPropertyType = (type: string | undefined): string => {
+                            if (!type) return 'Apartment';
+                            const typeMap: Record<string, string> = {
+                                'apartment': 'Apartment',
+                                'villa': 'Villa',
+                                'townhouse': 'Townhouse',
+                                'penthouse': 'Penthouse',
+                                'studio': 'Studio',
+                                'duplex': 'Duplex',
+                                'land': 'Land',
+                                'office': 'Office',
+                                'retail': 'Retail',
+                                'warehouse': 'Warehouse',
+                            };
+                            return typeMap[type.toLowerCase()] || type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+                        };
+
                         // Construct Property Data
                         const propertyData: any = {
                             category: sanitizeString(pfListing.category) || 'residential',
                             purpose: isRental ? 'Rent' : 'Sale',
-                            propertyType: sanitizeString(pfListing.type) || 'apartment',
+                            emirate: mapEmirate(pfListing.uaeEmirate),
+                            propertyType: mapPropertyType(sanitizeString(pfListing.type)),
                             propertyTitle: sanitizeString(pfListing.title?.en || pfListing.title) || '',
                             propertyDescription: sanitizeString(pfListing.description?.en || pfListing.description) || '',
                             projectStatus: projectStatus,
