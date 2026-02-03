@@ -274,6 +274,36 @@ export class AgentsService {
         return matched;
     }
 
+    /**
+     * Public search for agent login autocompletion.
+     * Returns minimal info for security.
+     */
+    async searchPublic(query: string) {
+        if (!query || query.length < 3) {
+            return []; // Security: Require 3+ chars
+        }
+
+        const searchTerm = query.trim();
+
+        return this.prisma.agent.findMany({
+            where: {
+                isActive: true, // Only active agents
+                name: {
+                    contains: searchTerm,
+                    mode: 'insensitive',
+                },
+            },
+            select: {
+                id: true,
+                name: true,
+                photoUrl: true,
+                username: true, // Needed for login hint or internal selection
+                email: true,    // Needed for login hint (secure environment assumed)
+            },
+            take: 5, // Limit results for performance/security
+        });
+    }
+
     async findOne(id: string) {
         const agent = await this.prisma.agent.findUnique({
             where: { id },

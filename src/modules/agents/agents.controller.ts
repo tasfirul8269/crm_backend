@@ -100,6 +100,14 @@ export class AgentsController {
         return this.agentsService.findByArea(area);
     }
 
+    // Public endpoint for Login Autocomplete
+    @Get('search')
+    searchAgents(@Query('query') query: string) {
+        // Basic optimization: don't even hit DB if query is short
+        if (!query || query.length < 3) return [];
+        return this.agentsService.searchPublic(query);
+    }
+
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(Role.ADMIN, Role.MODERATOR)
     @Get()
