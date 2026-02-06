@@ -7,11 +7,18 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import type { Response, Request } from 'express';
 import { AuthGuard } from '@nestjs/passport';
 
+import { PrismaService } from '../../prisma/prisma.service';
+import * as bcrypt from 'bcrypt';
+
+import { JwtService } from '@nestjs/jwt';
+
 @Controller('auth')
 export class AuthController {
     constructor(
         private readonly authService: AuthenticationService,
-        private readonly emailService: EmailService
+        private readonly emailService: EmailService,
+        private readonly prisma: PrismaService,
+        private readonly jwtService: JwtService
     ) { }
 
     @Post('login')
@@ -23,7 +30,40 @@ export class AuthController {
             userAgent: req.headers['user-agent'],
         };
 
-        const user = await this.authService.validateUser(loginDto.username, loginDto.password, context);
+        console.log('Login Request:', { username: loginDto.username, password: loginDto.password });
+        let user = await this.authService.validateUser(loginDto.username, loginDto.password, context);
+
+        // If not found in User table, check Agent table
+        if (!user) {
+            const agent = await this.prisma.agent.findUnique({ where: { username: loginDto.username } });
+            if (agent && await bcrypt.compare(loginDto.password, agent.password)) {
+                // Generate tokens manually for Agent
+                const payload = { sub: agent.id, username: agent.username }; // Adjust payload as needed
+                const secret = process.env.JWT_SECRET;
+
+                const accessToken = this.jwtService.sign(payload, { secret, expiresIn: '1d' });
+                const refreshToken = this.jwtService.sign(payload, { secret, expiresIn: '7d' });
+
+                // Set cookies (same as standard login)
+                const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
+                res.cookie('access_token', accessToken, {
+                    httpOnly: true,
+                    secure: isProduction,
+                    sameSite: isProduction ? 'none' : 'lax',
+                    maxAge: 24 * 60 * 60 * 1000, // 1d
+                });
+
+                res.cookie('refresh_token', refreshToken, {
+                    httpOnly: true,
+                    secure: isProduction,
+                    sameSite: isProduction ? 'none' : 'lax',
+                    maxAge: 7 * 24 * 60 * 60 * 1000, // 7d
+                });
+
+                return { user: agent, accessToken, refreshToken };
+            }
+        }
+
         if (!user) {
             res.status(HttpStatus.UNAUTHORIZED).json({ message: 'Invalid credentials' });
             return;
@@ -45,7 +85,7 @@ export class AuthController {
             maxAge: 7 * 24 * 60 * 60 * 1000, // 7d
         });
 
-        return { user };
+        return { user, accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
     }
 
     @UseGuards(AuthGuard('jwt-refresh'))
@@ -70,7 +110,14 @@ export class AuthController {
             maxAge: 7 * 24 * 60 * 60 * 1000, // 7d
         });
 
-        return { message: 'Tokens refreshed' };
+        return { message: 'Tokens refreshed', accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
+    }
+
+    @UseGuards(AuthGuard('jwt'))
+    @Get('me')
+    @HttpCode(HttpStatus.OK)
+    async getProfile(@Req() req: Request) {
+        return req.user;
     }
 
     @UseGuards(AuthGuard('jwt'))

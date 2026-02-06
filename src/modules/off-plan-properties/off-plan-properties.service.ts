@@ -196,7 +196,18 @@ export class OffPlanPropertiesService {
 
         const results = await this.prisma.offPlanProperty.findMany({
             where,
-            include: {
+            select: {
+                id: true,
+                projectTitle: true,
+                address: true,
+                bedrooms: true,
+                bathrooms: true,
+                area: true,
+                startingPrice: true,
+                coverPhoto: true,
+                propertyType: true,
+                createdAt: true,
+                isActive: true,
                 developer: {
                     select: {
                         id: true,
@@ -205,12 +216,14 @@ export class OffPlanPropertiesService {
                         salesManagerPhone: true,
                     },
                 },
+                // Include other lightweight fields if needed for filtering in-memory if not filtered by DB,
+                // but since filters are applied in 'where', we only need to return what's displayed.
             },
             orderBy,
         });
         const endTime = Date.now();
 
-        console.log(`✅ Query completed in ${endTime - startTime}ms, returned ${results.length} properties`);
+        console.log(`✅ Query completed in ${endTime - startTime}ms, returned ${results.length} properties. First item developer:`, JSON.stringify(results[0]?.developer, null, 2));
 
         return results;
     }
@@ -233,6 +246,143 @@ export class OffPlanPropertiesService {
             minArea: aggregates._min.area || 0,
             maxArea: aggregates._max.area || 10000, // Default fallback
         };
+    }
+
+    async getTopLocations(limit: number = 4) {
+        // 1. Get Off-Plan Counts (using address)
+        const offPlanGrouped = await this.prisma.offPlanProperty.groupBy({
+            by: ['address'],
+            _count: { address: true },
+            where: { isActive: true, address: { not: null } }
+        });
+
+        // 2. Get Standard Property Counts (using pfLocationPath)
+        const standardGrouped = await this.prisma.property.groupBy({
+            by: ['pfLocationPath', 'address'], // fallback to address if path missing
+            _count: { pfLocationPath: true }, // Count occurrences
+            where: { isActive: true }
+        });
+
+        // 3. Merge and Normalize
+        // Map<MasterName, { count: number, subLocations: Set<string> }>
+        const masterMap = new Map<string, { count: number, subs: Set<string> }>();
+
+        // Helper to extract community parts
+        const extractParts = (raw: string): { master: string, sub: string } | null => {
+            if (!raw) return null;
+            if (raw.includes('|') || raw.length > 80 || /^(1|2|3|4|5)\s*(BR|Bedroom)/i.test(raw)) return null;
+
+            // Normalize separators
+            let parts = raw.includes(',')
+                ? raw.split(',').map(s => s.trim())
+                : raw.includes(' - ')
+                    ? raw.split(' - ').map(s => s.trim())
+                    : raw.includes('>')
+                        ? raw.split('>').map(s => s.trim())
+                        : [raw.trim()];
+
+            // Remove empty parts
+            parts = parts.filter(p => p.length > 0);
+
+            // Pop Country (UAE)
+            if (parts.length > 1 && (parts[parts.length - 1].toUpperCase() === 'UNITED ARAB EMIRATES' || parts[parts.length - 1].toUpperCase() === 'UAE')) {
+                parts.pop();
+            }
+
+            // Pop Emirate (Dubai, Abu Dhabi, etc) - Common ones
+            const emirates = ['DUBAI', 'ABU DHABI', 'SHARJAH', 'AJMAN', 'RAS AL KHAIMAH', 'FUJAIRAH', 'UMM AL QUWAIN'];
+            if (parts.length > 1 && emirates.includes(parts[parts.length - 1].toUpperCase())) {
+                parts.pop();
+            }
+
+            if (parts.length === 0) return null;
+
+            // Strategy:
+            // Master = Last part (e.g. Dubai Land)
+            // Sub = First part (e.g. The Acres)
+            // If only 1 part, Master = Sub
+            const master = parts[parts.length - 1];
+            const sub = parts[0];
+
+            return { master, sub };
+        };
+
+        const processGroup = (source: string, count: number) => {
+            const parts = extractParts(source);
+            if (parts) {
+                const { master, sub } = parts;
+                const existing = masterMap.get(master) || { count: 0, subs: new Set<string>() };
+                existing.count += count;
+                existing.subs.add(sub);
+                masterMap.set(master, existing);
+            }
+        };
+
+        // Process Off-Plan
+        offPlanGrouped.forEach(group => {
+            if (group.address) processGroup(group.address, group._count.address);
+        });
+
+        // Process Standard Properties
+        standardGrouped.forEach(group => {
+            const source = group.pfLocationPath || group.address;
+            if (source) processGroup(source, group._count.pfLocationPath);
+        });
+
+        // 4. Sort and Top N
+        const sorted = Array.from(masterMap.entries())
+            .sort((a, b) => b[1].count - a[1].count)
+            .slice(0, limit);
+
+        // 5. Enrich with Coordinates
+        const results = await Promise.all(sorted.map(async ([masterName, data]) => {
+            // Fetch Master Coordinates
+            let masterSample = await this.prisma.offPlanProperty.findFirst({
+                where: { address: { contains: masterName } },
+                select: { latitude: true, longitude: true },
+            });
+
+            if (!masterSample?.latitude) {
+                masterSample = await this.prisma.property.findFirst({
+                    where: { OR: [{ pfLocationPath: { contains: masterName } }, { address: { contains: masterName } }] },
+                    select: { latitude: true, longitude: true },
+                }) as any;
+            }
+
+            // Fetch Sub Locations Coordinates
+            const subLocations = await Promise.all(Array.from(data.subs).map(async (subName) => {
+                let subSample = await this.prisma.offPlanProperty.findFirst({
+                    where: { address: { contains: subName } },
+                    select: { latitude: true, longitude: true },
+                });
+
+                if (!subSample?.latitude) {
+                    subSample = await this.prisma.property.findFirst({
+                        where: { OR: [{ pfLocationPath: { contains: subName } }, { address: { contains: subName } }] },
+                        select: { latitude: true, longitude: true },
+                    }) as any;
+                }
+
+                return {
+                    name: subName,
+                    latitude: subSample?.latitude || 0,
+                    longitude: subSample?.longitude || 0
+                };
+            }));
+
+            // Filter out subs with invalid coords
+            const validSubs = subLocations.filter(s => s.latitude !== 0 && s.longitude !== 0);
+
+            return {
+                name: masterName,
+                count: data.count,
+                latitude: masterSample?.latitude || 25.2048,
+                longitude: masterSample?.longitude || 55.2708,
+                subLocations: validSubs
+            };
+        }));
+
+        return results;
     }
 
     async findOne(id: string) {

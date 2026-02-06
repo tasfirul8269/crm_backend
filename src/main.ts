@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import cookieParser from 'cookie-parser';
@@ -16,7 +17,7 @@ async function bootstrap() {
   app.useGlobalPipes(new ValidationPipe({ transform: true }));
   app.useGlobalFilters(new HttpExceptionFilter());
   app.enableCors({
-    origin: ['http://localhost:3000', 'http://localhost:3010', 'https://mateluxy-crm-frontend.vercel.app', 'https://mateluxy-frontend-alpha.vercel.app', 'https://mateluxy-backend-5p27.onrender.com'],
+    origin: true,
     credentials: true,
   });
   await app.listen(process.env.PORT ?? 6001);

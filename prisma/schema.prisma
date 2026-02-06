@@ -138,6 +138,11 @@ model OffPlanProperty {
   isActive          Boolean   @default(true)
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
+
+  @@index([developerId])
+  @@index([startingPrice])
+  @@index([createdAt])
+  @@index([isActive])
 }
 
 
@@ -297,6 +302,11 @@ model Property {
   @@index([isActive, status])
   @@index([price])
   @@index([createdAt])
+  @@index([category])
+  @@index([purpose])
+  @@index([bedrooms])
+  @@index([area])
+  @@index([isActive, pfPublished, purpose])
 
 }
 

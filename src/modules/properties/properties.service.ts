@@ -485,16 +485,27 @@ export class PropertiesService {
 
             const normalizeLocation = (loc: string) => {
                 if (!loc) return null;
-                // Split by > or ,
-                let parts: string[] = [];
-                if (loc.includes('>')) {
-                    parts = loc.split('>').map(s => s.trim());
-                    // Take the LAST meaningful part that isn't just "Dubai" (usually sub-community)
-                    return parts[parts.length - 1].trim();
-                } else {
-                    parts = loc.split(',').map(s => s.trim());
-                    return parts[0].trim(); // Usually "Community, City" -> take Community
+                // Treat > same as comma
+                const normalized = loc.replace(/>/g, ',');
+                const parts = normalized.split(',').map(s => s.trim());
+
+                // User Rule: "The Acres, Dubai Land, Dubai" -> "Dubai Land" (Community)
+                // "Dubai Marina, Dubai" -> "Dubai Marina"
+                // Pattern: [Sub-Community], [Community], [City]
+                // We want the part BEFORE the City/Emirate.
+
+                // If at least 2 parts (e.g. Community, City), take the one before City.
+                if (parts.length >= 2) {
+                    const city = parts[parts.length - 1].toLowerCase();
+                    if (['dubai', 'uae', 'abu dhabi', 'sharjah'].includes(city)) {
+                        return parts[parts.length - 2].trim();
+                    }
+                    // If last part isn't generic city, maybe it's "Sub, Community".
+                    // Safe bet: always take 2nd to last if > 2?
+                    return parts[parts.length - 2].trim();
                 }
+
+                return parts[0].trim();
             };
 
             const addStat = (location: string | null, type: 'offPlan' | 'forRent' | 'forSell') => {
@@ -503,13 +514,17 @@ export class PropertiesService {
                 let distinctLoc = normalizeLocation(location);
 
                 if (!distinctLoc) return;
-                // Clean up common cleanups
                 distinctLoc = distinctLoc.replace(/\w\S*/g, (w) => (w.replace(/^\w/, (c) => c.toUpperCase())));
 
-                if (['Dubai', 'Uae', 'Abu Dhabi', 'Sharjah'].includes(distinctLoc)) return; // Skip generic
+                if (['Dubai', 'Uae', 'Abu Dhabi', 'Sharjah'].includes(distinctLoc)) return;
 
                 const current = locationStats.get(distinctLoc) || { offPlan: 0, forRent: 0, forSell: 0 };
                 current[type]++;
+
+                // NO LONGER AGGREGATING COORDS from specific properties 
+                // to avoid clustering at sub-community level.
+                // Frontend will use OSM to center the Community.
+
                 locationStats.set(distinctLoc, current);
             };
 
@@ -519,7 +534,6 @@ export class PropertiesService {
                     where: { isActive: true },
                     select: { district: true, areaFrom: true, areaTo: true }
                 });
-                this.logger.log(`Found ${leads.length} leads`);
 
                 for (const lead of leads) {
                     if (lead.district) addStat(lead.district, 'forSell');
@@ -528,7 +542,6 @@ export class PropertiesService {
                 }
 
             } else if (viewBy === 'impression') {
-                // Placeholder
                 this.logger.log('ViewBy impression not implemented');
             } else {
                 // By Listing
@@ -536,7 +549,6 @@ export class PropertiesService {
                 const offPlanProps = await this.prisma.offPlanProperty.findMany({
                     select: { address: true, emirate: true }
                 });
-                this.logger.log(`Found ${offPlanProps.length} offPlan properties`);
                 for (const p of offPlanProps) {
                     addStat(p.address || p.emirate, 'offPlan');
                 }
@@ -546,7 +558,6 @@ export class PropertiesService {
                     where: { isActive: true, status: 'AVAILABLE' },
                     select: { pfLocationPath: true, address: true, purpose: true, emirate: true }
                 });
-                this.logger.log(`Found ${activeProps.length} active properties`);
 
                 for (const p of activeProps) {
                     const loc = p.pfLocationPath || p.address || p.emirate;

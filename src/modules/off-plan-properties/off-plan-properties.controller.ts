@@ -19,7 +19,6 @@ export class OffPlanPropertiesController {
         return this.offPlanPropertiesService.create(createOffPlanPropertyDto, user?.id, ip);
     }
 
-    @UseGuards(JwtAuthGuard)
     @Get()
     findAll(
         @Query() query: any,
@@ -66,13 +65,16 @@ export class OffPlanPropertiesController {
         });
     }
 
-    @UseGuards(JwtAuthGuard)
     @Get('aggregates')
     getAggregates() {
         return this.offPlanPropertiesService.getAggregates();
     }
 
-    @UseGuards(JwtAuthGuard)
+    @Get('top-locations')
+    getTopLocations(@Query('limit') limit?: string) {
+        return this.offPlanPropertiesService.getTopLocations(limit ? Number(limit) : 4);
+    }
+
     @Get(':id')
     findOne(@Param('id') id: string) {
         return this.offPlanPropertiesService.findOne(id);

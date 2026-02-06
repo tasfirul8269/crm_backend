@@ -8,8 +8,10 @@ import { RefreshStrategy } from './strategies/refresh.strategy';
 
 import { EmailModule } from '../../providers/email/email.module';
 
+import { PrismaModule } from '../../prisma/prisma.module';
+
 @Module({
-  imports: [UsersModule, JwtModule.register({}), EmailModule],
+  imports: [UsersModule, JwtModule.register({}), EmailModule, PrismaModule],
   controllers: [AuthController],
   providers: [JwtStrategy, RefreshStrategy],
   exports: [],
