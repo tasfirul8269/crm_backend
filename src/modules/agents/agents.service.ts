@@ -242,6 +242,28 @@ export class AgentsService {
         });
     }
 
+    async findAllPublic() {
+        return this.prisma.agent.findMany({
+            where: { isActive: true },
+            select: {
+                id: true,
+                name: true,
+                position: true,
+                department: true,
+                photoUrl: true,
+                languages: true,
+                nationality: true,
+                phone: true,
+                email: true,
+                whatsapp: true,
+                linkedinAddress: true,
+                areasExpertIn: true,
+                experienceSince: true,
+            },
+            orderBy: { name: 'asc' },
+        });
+    }
+
     async findByArea(area: string) {
         if (!area) {
             return [];

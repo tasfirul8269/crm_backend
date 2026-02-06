@@ -100,6 +100,12 @@ export class AgentsController {
         return this.agentsService.findByArea(area);
     }
 
+    // Public endpoint for Team Page
+    @Get('public')
+    findAllPublic() {
+        return this.agentsService.findAllPublic();
+    }
+
     // Public endpoint for Login Autocomplete
     @Get('search')
     searchAgents(@Query('query') query: string) {
