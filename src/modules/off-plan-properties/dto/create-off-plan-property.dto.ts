@@ -1,4 +1,5 @@
 import { IsString, IsNumber, IsOptional, Min, IsArray, IsObject, IsBoolean } from 'class-validator';
+import { Transform } from 'class-transformer';
 
 export class CreateOffPlanPropertyDto {
     @IsOptional()
@@ -172,11 +173,21 @@ export class CreateOffPlanPropertyDto {
     virtualTourUrl?: string;
 
     @IsOptional()
+    @Transform(({ value }) => {
+        if (value === '[]' || value === '' || value === undefined || value === 'null') return [];
+        if (typeof value === 'string') return [value];
+        return value;
+    })
     @IsArray()
     @IsString({ each: true })
     exteriorMedia?: string[];
 
     @IsOptional()
+    @Transform(({ value }) => {
+        if (value === '[]' || value === '' || value === undefined || value === 'null') return [];
+        if (typeof value === 'string') return [value];
+        return value;
+    })
     @IsArray()
     @IsString({ each: true })
     interiorMedia?: string[];
@@ -222,6 +233,10 @@ export class CreateOffPlanPropertyDto {
     @IsOptional()
     @IsObject()
     areaExperts?: Record<string, string[]>;
+
+    @IsOptional()
+    @IsString()
+    approvalStatus?: string;
 
     @IsOptional()
     @IsArray()

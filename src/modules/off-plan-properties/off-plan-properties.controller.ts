@@ -12,8 +12,7 @@ import { GetUser } from '../../common/decorators/get-user.decorator';
 export class OffPlanPropertiesController {
     constructor(private readonly offPlanPropertiesService: OffPlanPropertiesService) { }
 
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(Role.ADMIN)
+    @UseGuards(JwtAuthGuard)
     @Post()
     create(@Body() createOffPlanPropertyDto: CreateOffPlanPropertyDto, @GetUser() user?: any, @Ip() ip?: string) {
         return this.offPlanPropertiesService.create(createOffPlanPropertyDto, user?.id, ip);
@@ -32,6 +31,7 @@ export class OffPlanPropertiesController {
         @Query('reference') reference?: string,
         @Query('location') location?: string,
         @Query('permitNumber') permitNumber?: string,
+        @Query('approvalStatus') approvalStatus?: string,
         @Query('sortBy') sortBy?: 'date' | 'price' | 'name',
         @Query('sortOrder') sortOrder?: 'asc' | 'desc',
     ) {
@@ -60,6 +60,7 @@ export class OffPlanPropertiesController {
             reference,
             location,
             permitNumber,
+            approvalStatus,
             sortBy,
             sortOrder,
         });

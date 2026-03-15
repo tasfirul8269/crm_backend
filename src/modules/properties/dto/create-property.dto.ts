@@ -141,6 +141,11 @@ export class CreatePropertyDto {
     videoUrl?: string;
 
     @IsOptional()
+    @Transform(({ value }) => {
+        if (value === '[]' || value === '' || value === undefined || value === 'null') return [];
+        if (typeof value === 'string') return [value];
+        return value;
+    })
     @IsArray()
     @IsString({ each: true })
     mediaImages?: string[];
@@ -183,6 +188,10 @@ export class CreatePropertyDto {
     @IsOptional()
     @IsString()
     pfLocationPath?: string;
+
+    @IsOptional()
+    @IsString()
+    approvalStatus?: string;
 
     @IsOptional()
     @IsBoolean()

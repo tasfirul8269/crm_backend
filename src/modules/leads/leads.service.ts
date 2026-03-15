@@ -14,11 +14,12 @@ export class LeadsService {
         let responsibleName: string | undefined;
         let responsibleAgentId: string | undefined;
 
-        if (createLeadDto.responsible) {
-            // `responsible` holds the selected agent id from the frontend
+        // Auto-assign to logged-in agent if no responsible specified
+        const agentIdToUse = createLeadDto.responsible || userId;
+        if (agentIdToUse) {
             // @ts-ignore Prisma client includes `agent`
             const agent = await this.prisma.agent.findUnique({
-                where: { id: createLeadDto.responsible },
+                where: { id: agentIdToUse },
                 select: { id: true, name: true },
             });
             if (agent) {
@@ -34,6 +35,7 @@ export class LeadsService {
                 responsible: responsibleName,
                 responsibleAgentId,
                 observers: createLeadDto.observers ?? [],
+                closingDate: createLeadDto.closingDate ? new Date(createLeadDto.closingDate) : undefined,
             },
             include: {
                 responsibleAgent: {
@@ -43,20 +45,31 @@ export class LeadsService {
         });
 
         if (userId) {
-            await this.activityService.create({
-                user: { connect: { id: userId } },
-                action: `Created new Lead: ${lead.name}`,
-                ipAddress,
-                location,
-            });
+            try {
+                await this.activityService.create({
+                    user: { connect: { id: userId } },
+                    action: `Created new Lead: ${lead.name}`,
+                    ipAddress,
+                    location,
+                });
+            } catch (e) {
+                // Agent users may not be in User table — skip activity log
+                console.warn(`[LeadsService] Activity log skipped for userId ${userId}:`, e?.message || e);
+            }
         }
 
         return lead;
     }
 
-    async findAll() {
+    async findAll(agentId?: string) {
+        const where: any = {};
+        if (agentId) {
+            where.responsibleAgentId = agentId;
+        }
+
         // @ts-ignore Generated Prisma client includes `lead` after `npx prisma generate`
         return this.prisma.lead.findMany({
+            where,
             include: {
                 responsibleAgent: {
                     select: { id: true, name: true, photoUrl: true },

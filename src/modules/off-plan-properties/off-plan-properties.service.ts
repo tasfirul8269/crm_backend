@@ -66,10 +66,20 @@ export class OffPlanPropertiesService {
         location?: string;
         category?: string;
         permitNumber?: string;
+        approvalStatus?: string;
         sortBy?: 'date' | 'price' | 'name';
         sortOrder?: 'asc' | 'desc';
     }) {
         const andConditions: any[] = [];
+
+        // Approval Status filtering
+        if (filters.approvalStatus && filters.approvalStatus.toUpperCase() === 'ALL') {
+             // Bypass filter
+        } else if (filters.approvalStatus) {
+             andConditions.push({ approvalStatus: filters.approvalStatus.toUpperCase() });
+        } else {
+             andConditions.push({ approvalStatus: 'APPROVED' });
+        }
 
         // Status filtering
         if (filters.status) {
@@ -249,23 +259,22 @@ export class OffPlanPropertiesService {
     }
 
     async getTopLocations(limit: number = 4) {
-        // 1. Get Off-Plan Counts (using address)
-        const offPlanGrouped = await this.prisma.offPlanProperty.groupBy({
-            by: ['address'],
-            _count: { address: true },
-            where: { isActive: true, address: { not: null } }
-        });
+        // OPTIMIZED: Fetch all required data in 2 queries instead of N+1
+        const [offPlanProps, standardProps] = await Promise.all([
+            this.prisma.offPlanProperty.findMany({
+                where: { isActive: true, address: { not: null } },
+                select: { address: true, latitude: true, longitude: true }
+            }),
+            this.prisma.property.findMany({
+                where: { isActive: true },
+                select: { pfLocationPath: true, address: true, latitude: true, longitude: true }
+            })
+        ]);
 
-        // 2. Get Standard Property Counts (using pfLocationPath)
-        const standardGrouped = await this.prisma.property.groupBy({
-            by: ['pfLocationPath', 'address'], // fallback to address if path missing
-            _count: { pfLocationPath: true }, // Count occurrences
-            where: { isActive: true }
-        });
-
-        // 3. Merge and Normalize
-        // Map<MasterName, { count: number, subLocations: Set<string> }>
+        // Map<MasterName, { count: number, subs: Set<string> }>
         const masterMap = new Map<string, { count: number, subs: Set<string> }>();
+        // Map<LocationName, { lat: number, lng: number }>
+        const coordMap = new Map<string, { lat: number, lng: number }>();
 
         // Helper to extract community parts
         const extractParts = (raw: string): { master: string, sub: string } | null => {
@@ -307,80 +316,82 @@ export class OffPlanPropertiesService {
             return { master, sub };
         };
 
-        const processGroup = (source: string, count: number) => {
-            const parts = extractParts(source);
-            if (parts) {
-                const { master, sub } = parts;
-                const existing = masterMap.get(master) || { count: 0, subs: new Set<string>() };
-                existing.count += count;
-                existing.subs.add(sub);
-                masterMap.set(master, existing);
+        const processItem = (locationStr: string, lat: number | null, lng: number | null) => {
+            const parts = extractParts(locationStr);
+            if (!parts) return;
+            const { master, sub } = parts;
+
+            // Update Counts
+            const existing = masterMap.get(master) || { count: 0, subs: new Set<string>() };
+            existing.count++;
+            existing.subs.add(sub);
+            masterMap.set(master, existing);
+
+            // Update Coordinates
+            if (lat && lng) {
+                // Always try to capture coords for the sub-location
+                if (!coordMap.has(sub)) {
+                    coordMap.set(sub, { lat, lng });
+                }
+
+                // Capture coords for master
+                // Priority: Exact match > First available
+                if (master === sub) {
+                    coordMap.set(master, { lat, lng });
+                } else if (!coordMap.has(master)) {
+                    coordMap.set(master, { lat, lng });
+                }
             }
         };
 
-        // Process Off-Plan
-        offPlanGrouped.forEach(group => {
-            if (group.address) processGroup(group.address, group._count.address);
+        // Process All Properties
+        offPlanProps.forEach(p => {
+            if (p.address) processItem(p.address, p.latitude, p.longitude);
         });
 
-        // Process Standard Properties
-        standardGrouped.forEach(group => {
-            const source = group.pfLocationPath || group.address;
-            if (source) processGroup(source, group._count.pfLocationPath);
+        standardProps.forEach(p => {
+            const source = p.pfLocationPath || p.address;
+            if (source) processItem(source, p.latitude, p.longitude);
         });
 
-        // 4. Sort and Top N
+        // Sort and Limit
         const sorted = Array.from(masterMap.entries())
             .sort((a, b) => b[1].count - a[1].count)
             .slice(0, limit);
 
-        // 5. Enrich with Coordinates
-        const results = await Promise.all(sorted.map(async ([masterName, data]) => {
-            // Fetch Master Coordinates
-            let masterSample = await this.prisma.offPlanProperty.findFirst({
-                where: { address: { contains: masterName } },
-                select: { latitude: true, longitude: true },
-            });
+        // Build Result
+        const results = sorted.map(([masterName, data]) => {
+            const masterCoords = coordMap.get(masterName);
 
-            if (!masterSample?.latitude) {
-                masterSample = await this.prisma.property.findFirst({
-                    where: { OR: [{ pfLocationPath: { contains: masterName } }, { address: { contains: masterName } }] },
-                    select: { latitude: true, longitude: true },
-                }) as any;
+            // Build sub-locations list with valid coordinates
+            const subLocations = Array.from(data.subs)
+                .map(subName => {
+                    const coords = coordMap.get(subName);
+                    return {
+                        name: subName,
+                        latitude: coords?.lat || 0,
+                        longitude: coords?.lng || 0
+                    };
+                })
+                .filter(s => s.latitude !== 0 && s.longitude !== 0);
+
+            // Fallback for Master Coords: Use first valid sub-location if master has no coords
+            let finalLat = masterCoords?.lat;
+            let finalLng = masterCoords?.lng;
+
+            if (!finalLat && subLocations.length > 0) {
+                finalLat = subLocations[0].latitude;
+                finalLng = subLocations[0].longitude;
             }
-
-            // Fetch Sub Locations Coordinates
-            const subLocations = await Promise.all(Array.from(data.subs).map(async (subName) => {
-                let subSample = await this.prisma.offPlanProperty.findFirst({
-                    where: { address: { contains: subName } },
-                    select: { latitude: true, longitude: true },
-                });
-
-                if (!subSample?.latitude) {
-                    subSample = await this.prisma.property.findFirst({
-                        where: { OR: [{ pfLocationPath: { contains: subName } }, { address: { contains: subName } }] },
-                        select: { latitude: true, longitude: true },
-                    }) as any;
-                }
-
-                return {
-                    name: subName,
-                    latitude: subSample?.latitude || 0,
-                    longitude: subSample?.longitude || 0
-                };
-            }));
-
-            // Filter out subs with invalid coords
-            const validSubs = subLocations.filter(s => s.latitude !== 0 && s.longitude !== 0);
 
             return {
                 name: masterName,
                 count: data.count,
-                latitude: masterSample?.latitude || 25.2048,
-                longitude: masterSample?.longitude || 55.2708,
-                subLocations: validSubs
+                latitude: finalLat || 25.2048,
+                longitude: finalLng || 55.2708,
+                subLocations: subLocations
             };
-        }));
+        });
 
         return results;
     }
