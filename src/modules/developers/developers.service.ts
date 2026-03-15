@@ -74,6 +74,26 @@ export class DevelopersService {
         });
     }
 
+    async findAllPublic() {
+        return this.prisma.developer.findMany({
+            where: {
+                isActive: true,
+                logoUrl: { not: null }, // Only show developers with logos
+            },
+            select: {
+                id: true,
+                name: true,
+                logoUrl: true,
+            },
+            orderBy: {
+                properties: {
+                    _count: 'desc', // Show top developers first
+                }
+            },
+            take: 20, // Limit to top 20
+        });
+    }
+
     async findOne(id: string) {
         const developer = await this.prisma.developer.findUnique({
             where: { id },

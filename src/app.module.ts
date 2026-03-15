@@ -30,6 +30,7 @@ import { AgentPasswordsModule } from './modules/agent-passwords/agent-passwords.
 import { FrooxiAuthModule } from '@frooxi-labs/authentication';
 import { UsersService } from './modules/users/users.service';
 import { PortalsModule } from './modules/portals/portals.module';
+import { TasksModule } from './modules/tasks/tasks.module';
 
 
 @Module({
@@ -74,8 +75,10 @@ import { PortalsModule } from './modules/portals/portals.module';
     TenancyContractModule,
     WatermarksModule,
     PortalsModule,
+    TasksModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
 export class AppModule { }
+

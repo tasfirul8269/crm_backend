@@ -27,8 +27,8 @@ export class LeadsController {
 
 
     @Get()
-    findAll() {
-        return this.leadsService.findAll();
+    findAll(@GetUser() user?: any) {
+        return this.leadsService.findAll(user?.id);
     }
 
     @Get(':id')

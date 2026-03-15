@@ -61,6 +61,11 @@ export class DevelopersController {
         return this.developersService.create(createDeveloperDto, logoUrl, salesManagerPhotoUrl, user?.id, ip);
     }
 
+    @Get('public')
+    findAllPublic() {
+        return this.developersService.findAllPublic();
+    }
+
     @UseGuards(JwtAuthGuard, RolesGuard)
     @Roles(Role.ADMIN, Role.MODERATOR)
     @Get()

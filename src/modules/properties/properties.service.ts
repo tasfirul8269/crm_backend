@@ -40,13 +40,24 @@ export class PropertiesService {
         maxPrice?: number;
         minArea?: number;
         maxArea?: number;
+        approvalStatus?: string;
         sortBy?: 'date' | 'price' | 'name';
         sortOrder?: 'asc' | 'desc';
         page?: number;
         limit?: number;
     }) {
         const where: any = {};
-        const { status, search, agentIds, category, purpose, location, reference, propertyTypes, permitNumber, minPrice, maxPrice, minArea, maxArea, sortBy, sortOrder } = filters;
+        const { status, search, agentIds, category, purpose, location, reference, propertyTypes, permitNumber, minPrice, maxPrice, minArea, maxArea, sortBy, sortOrder, approvalStatus } = filters;
+
+        // Approval Status logic
+        if (approvalStatus && approvalStatus.toUpperCase() === 'ALL') {
+            // Do not filter by approvalStatus
+        } else if (approvalStatus) {
+            where.approvalStatus = approvalStatus.toUpperCase();
+        } else {
+            // Default 
+            where.approvalStatus = 'APPROVED';
+        }
 
         // Status filter
         if (status) {
@@ -105,7 +116,8 @@ export class PropertiesService {
             where.OR = [
                 ...(where.OR || []),
                 { address: { contains: location, mode: 'insensitive' } },
-                { emirate: { contains: location, mode: 'insensitive' } }
+                { emirate: { contains: location, mode: 'insensitive' } },
+                { pfLocationPath: { contains: location, mode: 'insensitive' } }
             ];
         }
 
@@ -182,6 +194,7 @@ export class PropertiesService {
                     bathrooms: true,
                     area: true,
                     coverPhoto: true,
+                    mediaImages: true,
                     status: true,
                     isActive: true,
                     pfPublished: true,

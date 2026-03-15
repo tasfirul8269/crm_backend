@@ -8,136 +8,115 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  fullName     String
-  username     String    @unique
-  email        String    @unique
-  password     String
-  avatarUrl    String?
-  role         Role
-  permissions  String[]
-  sidebarMenuOrder String[]  // Custom sidebar menu order (array of menu item hrefs)
-  otp          String?
-  otpExpiresAt DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  isActive     Boolean   @default(true)
-  refreshToken String?
-  otpDeviceLocks OtpDeviceLock[]
-  activityLogs ActivityLog[]
-
-  // Notification Settings
-  isNotificationMuted         Boolean  @default(false)
-  notificationSoundUrl        String?
-  notificationSoundStart      Float?   @default(0)
-  notificationSoundEnd        Float?
-  useCustomNotificationSound  Boolean  @default(false)
-  notificationSounds          NotificationSound[]
+  id                         String              @id @default(cuid())
+  fullName                   String
+  username                   String              @unique
+  email                      String              @unique
+  password                   String
+  avatarUrl                  String?
+  role                       Role
+  permissions                String[]
+  otp                        String?
+  otpExpiresAt               DateTime?
+  createdAt                  DateTime            @default(now())
+  updatedAt                  DateTime            @updatedAt
+  isActive                   Boolean             @default(true)
+  refreshToken               String?
+  notificationSoundEnd       Float?
+  notificationSoundStart     Float?              @default(0)
+  notificationSoundUrl       String?
+  sidebarMenuOrder           String[]
+  useCustomNotificationSound Boolean             @default(false)
+  isNotificationMuted        Boolean             @default(false)
+  activityLogs               ActivityLog[]
+  notificationSounds         NotificationSound[]
+  otpDeviceLocks             OtpDeviceLock[]
 }
 
 model OtpDeviceLock {
-  id           String    @id @default(cuid())
-  deviceId     String
-  userId       String
-  attempts     Int       @default(0)
-  lockedUntil  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  user         User      @relation(fields: [userId], references: [id])
+  id          String    @id @default(cuid())
+  deviceId    String
+  userId      String
+  attempts    Int       @default(0)
+  lockedUntil DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  user        User      @relation(fields: [userId], references: [id])
 
   @@unique([userId, deviceId])
 }
 
 model Developer {
-  id                    String   @id @default(cuid())
-  name                  String
-  email                 String   @unique
-  phone                 String
-  logoUrl               String?
-  about                 String?
-  
-  salesManagerName      String
-  salesManagerEmail     String
-  salesManagerPhone     String
-  salesManagerPhotoUrl  String?
-  nationality           String?
-  languages             String[]
-  
-  properties            OffPlanProperty[]
-  
-  isActive              Boolean  @default(true)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  id                   String            @id @default(cuid())
+  name                 String
+  email                String            @unique
+  phone                String
+  logoUrl              String?
+  about                String?
+  salesManagerName     String
+  salesManagerEmail    String
+  salesManagerPhone    String
+  salesManagerPhotoUrl String?
+  nationality          String?
+  languages            String[]
+  isActive             Boolean           @default(true)
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  properties           OffPlanProperty[]
 }
 
 model OffPlanProperty {
-  id                String    @id @default(cuid())
-  developerId       String
-  developer         Developer @relation(fields: [developerId], references: [id])
-  
-  // Specific Details
-  emirate           String?
-  launchType        String?
-  projectHighlight  String?
-  propertyType      String[]  // Changed to array to support multiple types
-  plotArea          Float?
-  area              Float?
-  bedrooms          String?
-  kitchens          Int?
-  bathrooms         Int?
-  
-  // Locations
-  address           String?
-  latitude          Float?
-  longitude         Float?
-  style             String?
-  focalPoint        String?
-  focalPointImage   String?
-  nearbyHighlights  Json?     // Stored as JSON: [{title, subtitle, highlights: [{name, image, distance}]}]
-  
-  // Price Tab
-  startingPrice     Float?
-  serviceCharges    Float?
-  brokerFee         String?
-  roiPotential      Float?
-  paymentPlan       Json?     // Stored as JSON: { title, subtitle, milestones: [{ label, percentage, subtitle }] }
-
-  // DLD & Status
-  dldPermitNumber   String?
-  dldQrCode         String?
-  projectStage      String?
+  id                   String    @id @default(cuid())
+  developerId          String
+  emirate              String?
+  launchType           String?
+  projectHighlight     String?
+  plotArea             Float?
+  area                 Float?
+  bedrooms             String?
+  kitchens             Int?
+  bathrooms            Int?
+  isActive             Boolean   @default(true)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  address              String?
+  focalPoint           String?
+  focalPointImage      String?
+  latitude             Float?
+  longitude            Float?
+  nearbyHighlights     Json?
+  style                String?
+  propertyType         String[]
+  agentVideoUrl        String?
+  amenities            Json?
+  amenitiesCover       String?
+  amenitiesSubtitle    String?
+  amenitiesTitle       String?
+  brochure             String?
+  brokerFee            String?
   constructionProgress Float?
-  handoverDate      DateTime?
-
-  // General Details
-  projectTitle      String?
-  shortDescription  String?
-  projectDescription String?
-
-  // Media
-  coverPhoto        String?
-  videoUrl          String?
-  agentVideoUrl     String?
-  virtualTourUrl    String?
-  exteriorMedia     String[]  // Array of image URLs
-  interiorMedia     String[]  // Array of image URLs
-
-  // Additional
-  reference         String?
-  brochure          String?
-  amenitiesCover    String?
-  amenitiesTitle    String?
-  amenitiesSubtitle String?
-  amenities         Json?     // Stored as JSON: [{ name, icon }]
-  floorPlans        Json?     // Stored as JSON: [{ propertyType, livingArea, price, floorPlanImage }]
-
-  // Agent Tab
-  areaExperts       Json?     // Stored as JSON: { [location: string]: string[] } - maps location to agent IDs
-  projectExperts    String[]  // Array of agent IDs who are project experts
-  
-  isActive          Boolean   @default(true)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  coverPhoto           String?
+  dldPermitNumber      String?
+  dldQrCode            String?
+  exteriorMedia        String[]
+  floorPlans           Json?
+  handoverDate         DateTime?
+  interiorMedia        String[]
+  paymentPlan          Json?
+  projectDescription   String?
+  projectStage         String?
+  projectTitle         String?
+  reference            String?
+  roiPotential         Float?
+  serviceCharges       Float?
+  shortDescription     String?
+  startingPrice        Float?
+  videoUrl             String?
+  virtualTourUrl       String?
+  areaExperts          Json?
+  projectExperts       String[]
+  approvalStatus       String    @default("APPROVED")
+  developer            Developer @relation(fields: [developerId], references: [id])
 
   @@index([developerId])
   @@index([startingPrice])
@@ -145,64 +124,50 @@ model OffPlanProperty {
   @@index([isActive])
 }
 
-
-
 model Agent {
-  id              String   @id @default(cuid())
-  name            String
-  username        String   @unique
-  email           String   @unique
-  password        String
-  photoUrl        String?
-  
-  // Professional Info
-  position        String
-  department      String
-  
-  // Contact Info
-  phone           String
-  phoneSecondary  String?    // Secondary phone for Property Finder
-  whatsapp        String?
-  address         String?
-  vcardUrl        String?
-  
-  // Personal Info
-  nationality     String?
-  languages       String[]
-  about           String?
-  birthdate       DateTime?
-  linkedinAddress String?    // LinkedIn URL for Property Finder
-  compliances     Json?      // Regulatory compliance data for Property Finder
-  
-  // Employment Info
-  joinedDate      DateTime?
-  experienceSince Int?       // Year agent started career (for Property Finder)
-  visaExpiryDate  DateTime?
-  areasExpertIn   String[]
-  
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  // Property Finder Integration
-  pfUserId              String?
-  pfPublicProfileId     String?
-  licenseDocumentUrl    String?  // URL to uploaded license document for PF verification
-  pfVerificationStatus  String?  // 'pending', 'approved', 'rejected', or null
-  
-  properties            Property[]
-  leadsResponsibleFor   Lead[]
-  agentPasswords        AgentPassword[]
+  id                   String          @id @default(cuid())
+  name                 String
+  username             String          @unique
+  email                String          @unique
+  password             String
+  photoUrl             String?
+  position             String
+  department           String
+  phone                String
+  whatsapp             String?
+  address              String?
+  vcardUrl             String?
+  nationality          String?
+  languages            String[]
+  about                String?
+  birthdate            DateTime?
+  joinedDate           DateTime?
+  visaExpiryDate       DateTime?
+  areasExpertIn        String[]
+  isActive             Boolean         @default(true)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+  pfPublicProfileId    String?
+  pfUserId             String?
+  experienceSince      Int?
+  linkedinAddress      String?
+  phoneSecondary       String?
+  compliances          Json?
+  licenseDocumentUrl   String?
+  pfVerificationStatus String?
+  agentPasswords       AgentPassword[]
+  leadsResponsibleFor  Lead[]
+  properties           Property[]
 }
 
 model AgentPassword {
   id        String   @id @default(cuid())
   agentId   String
-  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
   email     String
-  password  String   // Encrypted
+  password  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
 }
 
 model Amenity {
@@ -215,88 +180,63 @@ model Amenity {
 }
 
 model Property {
-  id                String    @id @default(cuid())
-  
-  // Category & Purpose
-  category          String
-  purpose           String
-  
-  // Client Details
-  clientName        String
-  nationality       String?
-  phoneCountry      String?    @default("AE")
-  phoneNumber       String
-  
-  // Specific Details
-  emirate           String?
-  propertyType      String?
-  plotArea          Float?
-  area              Float?
-  bedrooms          String?
-  kitchens          Int?
-  bathrooms         Int?
-  unitNumber        String?
-  ownershipStatus   String?
-  projectStatus     String?    // "Resale - Ready to move", "Resale - Off-plan", "Primary - Ready to move", "Primary - Off-Plan"
-  completionDate    String?    // YYYY-MM, required if projectStatus is Off-plan
-  parkingSpaces     String?
-  
-  // Locations
-  address           String?
-  latitude          Float?
-  longitude         Float?
-  furnishingType    String?
-  
-  // Price
-  price             Float?
-  rentalPeriod      String?
-  brokerFee         String?
-  numberOfCheques   String?
-  
-  // DLD
-  dldPermitNumber   String?
-  dldQrCode         String?
-  
-  // General Details
-  propertyTitle     String?
-  propertyDescription String?
-  
-  // Media
-  coverPhoto        String?
-  videoUrl          String?
-  mediaImages       String[]
-  
-  // Additional
-  reference         String?
-  availableFrom     DateTime?
-  amenities         String[]
-  
-  // NOC & Documents
-  nocDocument       String?
-  passportCopy      String?
-  emiratesIdScan    String?
-  titleDeed         String?
-  
-  // Agent
-  assignedAgentId   String?
-  assignedAgent     Agent?    @relation(fields: [assignedAgentId], references: [id])
-  
-  // Property Finder Integration
-  pfListingId       String?   // Property Finder listing ID
-  pfPublished       Boolean   @default(false)
+  id                   String            @id @default(cuid())
+  category             String
+  purpose              String
+  clientName           String
+  nationality          String?
+  phoneNumber          String
+  emirate              String?
+  propertyType         String?
+  plotArea             Float?
+  area                 Float?
+  bedrooms             String?
+  kitchens             Int?
+  bathrooms            Int?
+  unitNumber           String?
+  ownershipStatus      String?
+  parkingSpaces        String?
+  address              String?
+  latitude             Float?
+  longitude            Float?
+  furnishingType       String?
+  price                Float?
+  rentalPeriod         String?
+  brokerFee            String?
+  numberOfCheques      String?
+  dldPermitNumber      String?
+  dldQrCode            String?
+  propertyTitle        String?
+  propertyDescription  String?
+  coverPhoto           String?
+  videoUrl             String?
+  mediaImages          String[]
+  reference            String?
+  availableFrom        DateTime?
+  amenities            String[]
+  nocDocument          String?
+  assignedAgentId      String?
+  isActive             Boolean           @default(true)
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  emiratesIdScan       String?
+  passportCopy         String?
+  titleDeed            String?
+  phoneCountry         String?           @default("AE")
+  status               PropertyStatus    @default(AVAILABLE)
+  hasKitchen           Boolean?
+  pfListingId          String?
+  pfPublished          Boolean           @default(false)
+  pfQualityScore       Float?
+  pfSyncedAt           DateTime?
   pfVerificationStatus String?
-  pfQualityScore    Float?
-  hasKitchen        Boolean?
-  pfSyncedAt        DateTime?
-  pfLocationId      Int?      // Property Finder Location ID (Tree ID)
-  pfLocationPath    String?   // Property Finder Location Path (e.g., "Dubai > Marina")
-  
-  isActive          Boolean   @default(true)
-  status            PropertyStatus @default(AVAILABLE)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-
-  tenancyContracts  TenancyContract[]
+  pfLocationId         Int?
+  pfLocationPath       String?
+  completionDate       String?
+  projectStatus        String?
+  approvalStatus       String            @default("APPROVED")
+  assignedAgent        Agent?            @relation(fields: [assignedAgentId], references: [id])
+  tenancyContracts     TenancyContract[]
 
   @@index([isActive, pfPublished])
   @@index([isActive, status])
@@ -307,112 +247,69 @@ model Property {
   @@index([bedrooms])
   @@index([area])
   @@index([isActive, pfPublished, purpose])
-
 }
 
 model PropertyDraft {
-  id                String    @id @default(cuid())
-  
-  // The draft content is stored as flexible JSON to handle partial or evolving schemas
-  data              Json
-  
-  // Links
-  originalPropertyId String?  // Check if this draft edits an existing property (nullable for new property drafts)
-  
-  // Creator
-  userId            String?
-  // Note: We're not making userId mandatory or related to User model strictly here if anonymous drafts allowed, 
-  // but typically it should be. The user asked for "show them all in the drafts tab", implying a global or user list.
-  // Given current User model, let's keep it simple. If we want relation:
-  // user              User      @relation(fields: [userId], references: [id])
-  // But User model needs opposite relation field. To minimize impact on User model, we'll keep it as loose string or add relation if strictly needed.
-  // Requirement: "show them all in the drafts tab".
-  
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                 String   @id @default(cuid())
+  data               Json
+  originalPropertyId String?
+  userId             String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model Lead {
-  id                String    @id @default(cuid())
-
-  // Contact Information
-  name              String
-  email             String
-  phone             String
-
-  // Additional Details
-  organizer         String?
-  responsible       String?
+  id                 String    @id @default(cuid())
+  name               String
+  email              String
+  phone              String
+  organizer          String?
+  responsible        String?
+  observers          String[]
+  status             String?
+  dealPrice          Float?
+  currency           String?   @default("AED")
+  source             String?
+  closingDate        DateTime?
+  district           String?
+  propertyType       String?
+  developer          String?
+  bedrooms           String?
+  budgetFrom         Float?
+  budgetTo           Float?
+  areaFrom           String?
+  areaTo             String?
+  additionalContent  String?
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
   responsibleAgentId String?
-  responsibleAgent   Agent?   @relation(fields: [responsibleAgentId], references: [id])
-  observers         String[]
-  status            String?
-  dealPrice         Float?
-  currency          String?   @default("AED")
-  source            String?
-  closingDate       DateTime?
-
-  // Client's Wishes
-  district          String?
-  propertyType      String?
-  developer         String?
-  bedrooms          String?
-  budgetFrom        Float?
-  budgetTo          Float?
-  areaFrom          String?
-  areaTo            String?
-  additionalContent String?
-
-  isActive          Boolean   @default(true)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-}
-
-enum Role {
-  ADMIN
-  MODERATOR
-}
-
-enum PropertyStatus {
-  AVAILABLE
-  SOLD
-  RENTED
+  responsibleAgent   Agent?    @relation(fields: [responsibleAgentId], references: [id])
 }
 
 model PropertyFinderLead {
-  id                String    @id @default(cuid())
-  pfId              String    @unique // Property Finder's lead ID
-  
-  // Contact Info
-  name              String
-  email             String
-  phone             String
-  
-  // Lead Details
-  channel           String
-  status            String
-  comments          String?
-  
-  // Listing/Property Details
-  listingId         String?   // PF Listing ID
-  listingReference  String?   // External ID / Reference
-  
-  // Agent
-  assignedToIdentifier String? // PF Agent ID/Identifier
-  
-  // Metrics
-  dealPrice         Float?    // If we want to track value stats for graph
-
-  createdAt         DateTime  // Using PF's createdAt
-  fetchedAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id                   String   @id @default(cuid())
+  pfId                 String   @unique
+  name                 String
+  email                String
+  phone                String
+  channel              String
+  status               String
+  comments             String?
+  listingId            String?
+  listingReference     String?
+  assignedToIdentifier String?
+  dealPrice            Float?
+  createdAt            DateTime
+  fetchedAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }
 
 model IntegrationConfig {
   id          String   @id @default(cuid())
-  provider    String   @unique // 'property_finder', 'meta', 'tiktok_ads', 'adsense', 'whatsapp'
+  provider    String   @unique
   isEnabled   Boolean  @default(false)
-  credentials Json     // Stores { apiKey, secretKey, ... }
+  credentials Json
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
@@ -420,44 +317,35 @@ model IntegrationConfig {
 model ActivityLog {
   id        String   @id @default(cuid())
   userId    String?
-  user      User?    @relation(fields: [userId], references: [id])
   action    String
   ipAddress String?
   location  String?
   createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
 }
 
 model Notification {
   id        String   @id @default(cuid())
-  type      String   // 'INFO', 'WARNING', 'SUCCESS', 'ERROR'
+  type      String
   title     String
   message   String
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
 }
 
-// Property Finder Location Cache
-// Stores location ID-to-name mappings to avoid repeated API calls
 model PfLocation {
-  id        Int      @id  // Property Finder's location ID (not auto-generated)
-  name      String        // Location name (e.g., "Dubai Marina")
-  path      String        // Full path (e.g., "Dubai > Dubai Marina")
-  type      String?       // Location type (CITY, COMMUNITY, BUILDING)
-  lat       Float?        // Latitude
-  lng       Float?        // Longitude
+  id        Int      @id
+  name      String
+  path      String
+  type      String?
+  lat       Float?
+  lng       Float?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-// NOC (No Objection Certificate) for property listings
 model Noc {
-  id                  String    @id @default(cuid())
-  
-  // Owners Relation
-  owners              NocOwner[]
-
-  
-  // Property Details
+  id                  String     @id @default(cuid())
   propertyType        String?
   buildingProjectName String?
   community           String?
@@ -469,224 +357,201 @@ model Noc {
   rentalAmount        Float?
   saleAmount          Float?
   parking             String?
-  propertyNumber      String?
-  
-  // Terms and Conditions
-  agreementType       String?   // 'exclusive' | 'non-exclusive'
-  periodMonths        Int?      // 1, 2, 3, or 6
+  agreementType       String?
+  periodMonths        Int?
   agreementDate       DateTime?
-
-  // Contact Info & Location
-  clientPhone         String? // Unique phone number per NOC
-  location            String?   // Google Maps Address
-  latitude            Float?
-  longitude           Float?
-  
-  // Generated PDF - stored in S3
   pdfUrl              String?
-  
-  // Metadata
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  clientPhone         String?
+  latitude            Float?
+  location            String?
+  longitude           Float?
+  propertyNumber      String?
+  owners              NocOwner[]
 }
 
-// AI Settings for property description and title generation
 model AiSettings {
-  id                  String    @id @default(cuid())
-  minCharacters       Int       @default(750)
-  maxCharacters       Int       @default(2000)
-  minTitleCharacters  Int       @default(30)
-  maxTitleCharacters  Int       @default(100)
-  isEnabled           Boolean   @default(true)
-  modelName           String    @default("gemini-2.5-flash")
-  
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  id                 String   @id @default(cuid())
+  minCharacters      Int      @default(750)
+  maxCharacters      Int      @default(2000)
+  isEnabled          Boolean  @default(true)
+  modelName          String   @default("gemini-2.5-flash")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  maxTitleCharacters Int      @default(100)
+  minTitleCharacters Int      @default(30)
 }
 
-// AI Training Examples for style learning
 model AiTrainingExample {
-  id                  String    @id @default(cuid())
-  type                String    @default("description") // "description" or "title"
-  title               String?   // Optional title/label for the example
-  description         String    // The example property description or title
-  isActive            Boolean   @default(true)
-  
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  id          String   @id @default(cuid())
+  title       String?
+  description String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  type        String   @default("description")
 }
 
 model NocOwner {
-  id              String    @id @default(cuid())
-  nocId           String
-  noc             Noc       @relation(fields: [nocId], references: [id], onDelete: Cascade)
-  
-  name            String?
-  emiratesId      String?
-  issueDate       DateTime?
-  expiryDate      DateTime?
-  countryCode     String?
-  phone           String?
-  
-  signatureUrl    String?
-  signatureDate   DateTime?
-  
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id            String    @id @default(cuid())
+  nocId         String
+  name          String?
+  emiratesId    String?
+  issueDate     DateTime?
+  expiryDate    DateTime?
+  countryCode   String?
+  phone         String?
+  signatureUrl  String?
+  signatureDate DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  noc           Noc       @relation(fields: [nocId], references: [id], onDelete: Cascade)
 }
 
-// File Manager System
 model Folder {
-  id          String   @id @default(cuid())
-  name        String
-  parentId    String?
-  parent      Folder?  @relation("FolderToFolder", fields: [parentId], references: [id], onDelete: Cascade)
-  children    Folder[] @relation("FolderToFolder")
-  files       File[]
-  isSystem    Boolean  @default(false) // Prevent deletion of root automation folders
-  
-  // Storage tracking
-  size        Int      @default(0) // Aggregated size of all files in this folder and subfolders
-  color       String?  // Folder label color
-  
-  // Soft delete
-  isDeleted   Boolean  @default(false)
-  deletedAt   DateTime?
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String    @id @default(cuid())
+  name      String
+  parentId  String?
+  isSystem  Boolean   @default(false)
+  size      Int       @default(0)
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  color     String?
+  files     File[]
+  parent    Folder?   @relation("FolderToFolder", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Folder[]  @relation("FolderToFolder")
 }
 
 model File {
-  id          String   @id @default(cuid())
-  name        String
-  url         String
-  mimeType    String
-  size        Int      @default(0)
-  
-  folderId    String?
-  folder      Folder?  @relation(fields: [folderId], references: [id], onDelete: Cascade)
-  
-  // Soft delete
-  isDeleted   Boolean  @default(false)
-  deletedAt   DateTime?
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String    @id @default(cuid())
+  name      String
+  url       String
+  mimeType  String
+  size      Int       @default(0)
+  folderId  String?
+  isDeleted Boolean   @default(false)
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  folder    Folder?   @relation(fields: [folderId], references: [id], onDelete: Cascade)
 }
 
 model PasswordEntry {
-  id          String   @id @default(cuid())
-  title       String
-  username    String   // Encrypted
-  password    String   // Encrypted
-  accessIds   String[] // Array of User IDs who have access
-  note        String?
-  logoUrl     String?  // Optional logo/icon URL for easy identification
-  createdBy   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  title     String
+  username  String
+  password  String
+  accessIds String[]
+  note      String?
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  logoUrl   String?
 }
 
 model TenancyContract {
-  id              String   @id @default(cuid())
-  
-  // Property Relation
-  propertyId      String?
-  property        Property? @relation(fields: [propertyId], references: [id])
-  
-  // Step 1: Owner Details
-  ownerName       String?
-  ownerPhone      String?
-  ownerEmail      String?
-
-  // Step 2: Tenant Details
-  tenantName      String?
-  tenantEmail     String?
-  tenantPhone     String?
-
-  // Step 3: Property Details
-  propertyUsage   String?
-  buildingName    String?
-  location        String?
-  propertySize    Float?
-  propertyType    String? // Apartment, Villa, etc.
-  propertyNumber  String?
-  plotNumber      String?
-  premisesNumber  String?
-
-  // Step 4: Contract Details
+  id                String    @id @default(cuid())
+  propertyId        String?
+  ownerName         String?
+  ownerPhone        String?
+  ownerEmail        String?
+  tenantName        String?
+  tenantEmail       String?
+  tenantPhone       String?
+  propertyUsage     String?
+  buildingName      String?
+  location          String?
+  propertySize      Float?
+  propertyType      String?
+  propertyNumber    String?
+  plotNumber        String?
+  premisesNumber    String?
   contractStartDate DateTime?
   contractEndDate   DateTime?
   annualRent        Float?
   contractValue     Float?
   securityDeposit   Float?
   modeOfPayment     String?
-
-  // Step 5: Additional Terms
-  additionalTerms   Json? // Stored as String[]
-
-  // Generated PDF
+  additionalTerms   Json?
   pdfUrl            String?
-
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  property          Property? @relation(fields: [propertyId], references: [id])
 }
 
-// Watermark Management
 model Watermark {
-  id          String   @id @default(cuid())
-  name        String
-  type        String   @default("image")          // "image" or "text"
-  imageUrl    String?                             // Required for image watermarks, optional for text
-  text        String?                             // Text content for text watermarks
-  textColor   String?  @default("#FFFFFF")        // Color for text watermarks
-  position    String   @default("bottom-right")   // Position options
-  opacity     Float    @default(0.8)              // 0.0 to 1.0
-  scale       Float    @default(0.15)             // Scale percentage
-  rotation    Float    @default(0)                // Rotation in degrees
-  blendMode   String   @default("Normal")         // Blend mode
-  isActive    Boolean  @default(false)            // Only one can be active at a time
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  name      String
+  imageUrl  String?
+  position  String   @default("bottom-right")
+  opacity   Float    @default(0.8)
+  scale     Float    @default(0.15)
+  isActive  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  blendMode String   @default("Normal")
+  rotation  Float    @default(0)
+  text      String?
+  textColor String?  @default("#FFFFFF")
+  type      String   @default("image")
 }
 
 model NotificationSound {
   id        String   @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name      String
   url       String
   createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// Property Client Details Backup
-// Stores backup of client details from properties for data recovery
 model PropertyClientDetails {
   id              String   @id @default(cuid())
-  propertyId      String   @unique  // Reference to the property (one-to-one backup)
-  
-  // Client Details
+  propertyId      String   @unique
   clientName      String?
   nationality     String?
   phoneCountry    String?
   phoneNumber     String?
-  
-  // NOC & Documents
   nocDocument     String?
   passportCopy    String?
   emiratesIdScan  String?
   titleDeed       String?
-  
-  // Google Maps Location (CRM-only, not sent to PF)
+  ownershipStatus String?
+  brokerFee       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
   address         String?
   latitude        Float?
   longitude       Float?
-  
-  // Additional CRM-only fields
-  ownershipStatus String?
-  brokerFee       String?
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+}
+
+model Task {
+  id          String   @id @default(cuid())
+  title       String
+  note        String?
+  date        DateTime
+  startTime   String?
+  endTime     String?
+  category    String?
+  isCompleted Boolean  @default(false)
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([date])
+  @@index([createdBy])
+}
+
+enum Role {
+  ADMIN
+  MODERATOR
+}
+
+enum PropertyStatus {
+  AVAILABLE
+  SOLD
+  RENTED
 }
