@@ -10,6 +10,14 @@ export class CreateOffPlanPropertyDto {
     @IsString()
     developerId?: string;
 
+    @IsOptional()
+    @IsString()
+    createdByAdminId?: string;
+
+    @IsOptional()
+    @IsString()
+    createdByAgentId?: string;
+
     // Specific Details
     @IsOptional()
     @IsString()

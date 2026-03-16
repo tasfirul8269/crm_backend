@@ -17,9 +17,19 @@ export class ActivityService {
             }
         }
 
-        return this.prisma.activityLog.create({
-            data,
-        });
+        try {
+            return await this.prisma.activityLog.create({
+                data,
+            });
+        } catch (error) {
+            // P2025 is Prisma's "Record to connect not found" error
+            // If the user doesn't exist, we just skip logging the activity to prevent breaking the flow
+            if (error.code === 'P2025') {
+                console.warn(`Skipped activity log creation: User not found for log action "${data.action}"`);
+                return null;
+            }
+            throw error;
+        }
     }
 
     async findAll(params: {

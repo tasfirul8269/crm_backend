@@ -380,7 +380,7 @@ export class AgentsService {
         };
     }
 
-    async update(id: string, updateAgentDto: UpdateAgentDto, photoUrl?: string, vcardUrl?: string, licenseDocumentUrl?: string, userId?: string, ipAddress?: string, location?: string) {
+    async update(id: string, updateAgentDto: UpdateAgentDto, photoUrl?: string, coverPhotoUrl?: string, vcardUrl?: string, licenseDocumentUrl?: string, userId?: string, ipAddress?: string, location?: string) {
         const agent = await this.findOne(id); // Check if exists
 
         const updateData: any = { ...updateAgentDto };
@@ -392,6 +392,9 @@ export class AgentsService {
 
         if (photoUrl) {
             updateData.photoUrl = photoUrl;
+        }
+        if (coverPhotoUrl) {
+            updateData.coverPhotoUrl = coverPhotoUrl;
         }
         if (vcardUrl) {
             updateData.vcardUrl = vcardUrl;

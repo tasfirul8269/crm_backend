@@ -31,6 +31,7 @@ model User {
   activityLogs               ActivityLog[]
   notificationSounds         NotificationSound[]
   otpDeviceLocks             OtpDeviceLock[]
+  offPlanProperties          OffPlanProperty[]
 }
 
 model OtpDeviceLock {
@@ -116,6 +117,10 @@ model OffPlanProperty {
   areaExperts          Json?
   projectExperts       String[]
   approvalStatus       String    @default("APPROVED")
+  createdByAdminId     String?
+  createdByAgentId     String?
+  createdByAdmin       User?     @relation(fields: [createdByAdminId], references: [id])
+  createdByAgent       Agent?    @relation(fields: [createdByAgentId], references: [id])
   developer            Developer @relation(fields: [developerId], references: [id])
 
   @@index([developerId])
@@ -131,6 +136,7 @@ model Agent {
   email                String          @unique
   password             String
   photoUrl             String?
+  coverPhotoUrl        String?
   position             String
   department           String
   phone                String
@@ -158,6 +164,7 @@ model Agent {
   agentPasswords       AgentPassword[]
   leadsResponsibleFor  Lead[]
   properties           Property[]
+  offPlanProperties    OffPlanProperty[]
 }
 
 model AgentPassword {

@@ -97,6 +97,44 @@ export class LeadsService {
         return lead;
     }
 
+    async update(id: string, updateLeadDto: any, userId?: string, ipAddress?: string, location?: string) {
+        // @ts-ignore Prisma client includes `lead`
+        const existingLead = await this.prisma.lead.findUnique({ where: { id } });
+        if (!existingLead) throw new NotFoundException('Lead not found');
+
+        const data: any = { ...updateLeadDto };
+        if (data.closingDate) data.closingDate = new Date(data.closingDate);
+        if (data.dealPrice) data.dealPrice = Number(data.dealPrice);
+        if (data.budgetFrom) data.budgetFrom = Number(data.budgetFrom);
+        if (data.budgetTo) data.budgetTo = Number(data.budgetTo);
+
+        // @ts-ignore Prisma client includes `lead`
+        const updatedLead = await this.prisma.lead.update({
+            where: { id },
+            data,
+            include: {
+                responsibleAgent: {
+                    select: { id: true, name: true, photoUrl: true },
+                },
+            },
+        });
+
+        if (userId) {
+            try {
+                await this.activityService.create({
+                    user: { connect: { id: userId } },
+                    action: `Updated Lead: ${updatedLead.name}`,
+                    ipAddress,
+                    location,
+                });
+            } catch (e) {
+                console.warn(`[LeadsService] Activity log skipped for update userId ${userId}:`, e?.message || e);
+            }
+        }
+
+        return updatedLead;
+    }
+
     async updateResponsible(leadId: string, agentId: string, userId?: string, ipAddress?: string, location?: string) {
         // @ts-ignore Prisma client includes `agent`
         const agent = await this.prisma.agent.findUnique({

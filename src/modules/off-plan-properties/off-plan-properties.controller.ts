@@ -22,7 +22,9 @@ export class OffPlanPropertiesController {
     findAll(
         @Query() query: any,
         @Query('search') search?: string,
-        @Query('developerId') developerId?: string,
+        @Query('createdByAdminId') createdByAdminId?: string,
+        @Query('createdByAgentId') createdByAgentId?: string,
+        @Query('agentId') agentId?: string,
         @Query('minPrice') minPrice?: string,
         @Query('maxPrice') maxPrice?: string,
         @Query('minArea') minArea?: string,
@@ -48,7 +50,9 @@ export class OffPlanPropertiesController {
 
         return this.offPlanPropertiesService.findAll({
             search,
-            developerId,
+            createdByAdminId,
+            createdByAgentId,
+            agentId,
             areaExpertIds,
             projectExpertIds,
             propertyType,
@@ -81,8 +85,7 @@ export class OffPlanPropertiesController {
         return this.offPlanPropertiesService.findOne(id);
     }
 
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(Role.ADMIN)
+    @UseGuards(JwtAuthGuard)
     @Patch(':id')
     update(
         @Param('id') id: string,
@@ -93,8 +96,7 @@ export class OffPlanPropertiesController {
         return this.offPlanPropertiesService.update(id, updateOffPlanPropertyDto, user?.id, ip);
     }
 
-    @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(Role.ADMIN)
+    @UseGuards(JwtAuthGuard)
     @Delete(':id')
     remove(@Param('id') id: string, @GetUser() user?: any, @Ip() ip?: string) {
         return this.offPlanPropertiesService.remove(id, user?.id, ip);

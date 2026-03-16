@@ -20,6 +20,55 @@ export class OffPlanPropertiesService {
             data.handoverDate = new Date(data.handoverDate);
         }
 
+        // Handle developer relation properly
+        if (data.developerId) {
+            data.developer = {
+                connect: { id: data.developerId }
+            };
+            delete data.developerId;
+        }
+
+        // Handle creator relations
+        if (data.createdByAdminId) {
+            data.createdByAdmin = {
+                connect: { id: data.createdByAdminId }
+            };
+            delete data.createdByAdminId;
+        }
+
+        if (data.createdByAgentId) {
+            data.createdByAgent = {
+                connect: { id: data.createdByAgentId }
+            };
+            delete data.createdByAgentId;
+        }
+
+        // Handle array fields that might be sent as null from the frontend
+        if (data.propertyType === null) {
+            data.propertyType = [];
+        }
+        if (data.exteriorMedia === null) {
+            data.exteriorMedia = [];
+        }
+        if (data.interiorMedia === null) {
+            data.interiorMedia = [];
+        }
+        if (data.projectExperts === null) {
+            data.projectExperts = [];
+        }
+
+        // Clean out extra properties sent by unified Flutter App PropertyModel that aren't in OffPlanProperty schema
+        const unusedFields = [
+            'category', 'purpose', 'clientName', 'nationality', 'phoneCountry', 'phoneNumber', 
+            'unitNumber', 'ownershipStatus', 'projectStatus', 'completionDate', 'parkingSpaces', 
+            'furnishingType', 'price', 'rentalPeriod', 'numberOfCheques', 'pfLocationId', 
+            'pfLocationPath', 'propertyTitle', 'propertyDescription', 'availableFrom', 
+            'mediaImages', 'assignedAgentId', 'propertyTypes'
+        ];
+        for (const field of unusedFields) {
+            delete data[field];
+        }
+
         const property = await this.prisma.offPlanProperty.create({
             data,
             include: {
@@ -31,16 +80,27 @@ export class OffPlanPropertiesService {
                         salesManagerPhone: true,
                     },
                 },
+                createdByAgent: {
+                    select: { id: true, name: true, photoUrl: true, phone: true }
+                },
+                createdByAdmin: {
+                    select: { id: true, fullName: true, avatarUrl: true }
+                },
             },
         });
 
         if (userId) {
-            await this.activityService.create({
-                user: { connect: { id: userId } },
-                action: `Created Off-Plan Property: ${property.projectTitle}`,
-                ipAddress,
-                location,
-            });
+            try {
+                // Check if user exists first to prevent P2025 error, or just catch it
+                await this.activityService.create({
+                    user: { connect: { id: userId } },
+                    action: `Created Off-Plan Property: ${property.projectTitle}`,
+                    ipAddress,
+                    location,
+                });
+            } catch (err) {
+                console.warn(`Failed to create activity log for user ${userId}:`, err.message);
+            }
         }
 
         // Create File Manager Structure
@@ -54,6 +114,9 @@ export class OffPlanPropertiesService {
     async findAll(filters: {
         search?: string;
         developerId?: string;
+        createdByAdminId?: string;
+        createdByAgentId?: string;
+        agentId?: string;
         areaExpertIds?: string[];
         projectExpertIds?: string[];
         propertyType?: string[];
@@ -102,6 +165,14 @@ export class OffPlanPropertiesService {
             andConditions.push({ developerId: filters.developerId });
         }
 
+        if (filters.createdByAdminId) {
+            andConditions.push({ createdByAdminId: filters.createdByAdminId });
+        }
+
+        if (filters.createdByAgentId) {
+            andConditions.push({ createdByAgentId: filters.createdByAgentId });
+        }
+
         // Filter by project experts
         if (filters.projectExpertIds && filters.projectExpertIds.length > 0) {
             andConditions.push({ projectExperts: { hasSome: filters.projectExpertIds } });
@@ -115,6 +186,21 @@ export class OffPlanPropertiesService {
                         string_contains: id
                     }
                 }))
+            });
+        }
+
+        // Global AgentId Filter (OR relationship for "My Properties" view)
+        if (filters.agentId) {
+            andConditions.push({
+                OR: [
+                    { createdByAgentId: filters.agentId },
+                    { projectExperts: { hasSome: [filters.agentId] } },
+                    {
+                        areaExperts: {
+                            string_contains: filters.agentId
+                        }
+                    }
+                ]
             });
         }
 
@@ -225,6 +311,21 @@ export class OffPlanPropertiesService {
                         logoUrl: true,
                         salesManagerPhone: true,
                     },
+                },
+                createdByAgent: {
+                    select: {
+                        id: true,
+                        name: true,
+                        photoUrl: true,
+                        phone: true,
+                    }
+                },
+                createdByAdmin: {
+                    select: {
+                        id: true,
+                        fullName: true,
+                        avatarUrl: true,
+                    }
                 },
                 // Include other lightweight fields if needed for filtering in-memory if not filtered by DB,
                 // but since filters are applied in 'where', we only need to return what's displayed.
@@ -421,9 +522,50 @@ export class OffPlanPropertiesService {
     async update(id: string, updateOffPlanPropertyDto: UpdateOffPlanPropertyDto, userId?: string, ipAddress?: string, location?: string) {
         await this.findOne(id); // Check if exists
 
+        const data: any = { ...updateOffPlanPropertyDto };
+        if (data.handoverDate) {
+            data.handoverDate = new Date(data.handoverDate);
+        }
+
+        // Handle developer relation properly
+        if (data.developerId !== undefined) {
+            if (data.developerId === null) {
+                data.developer = { disconnect: true };
+            } else {
+                data.developer = { connect: { id: data.developerId } };
+            }
+            delete data.developerId;
+        }
+
+        // Handle array fields that might be sent as null from the frontend
+        if (data.propertyType === null) {
+            data.propertyType = [];
+        }
+        if (data.exteriorMedia === null) {
+            data.exteriorMedia = [];
+        }
+        if (data.interiorMedia === null) {
+            data.interiorMedia = [];
+        }
+        if (data.projectExperts === null) {
+            data.projectExperts = [];
+        }
+
+        // Clean out extra properties sent by unified Flutter App PropertyModel that aren't in OffPlanProperty schema
+        const unusedFields = [
+            'category', 'purpose', 'clientName', 'nationality', 'phoneCountry', 'phoneNumber', 
+            'unitNumber', 'ownershipStatus', 'projectStatus', 'completionDate', 'parkingSpaces', 
+            'furnishingType', 'price', 'rentalPeriod', 'numberOfCheques', 'pfLocationId', 
+            'pfLocationPath', 'propertyTitle', 'propertyDescription', 'availableFrom', 
+            'mediaImages', 'assignedAgentId', 'propertyTypes'
+        ];
+        for (const field of unusedFields) {
+            delete data[field];
+        }
+
         const updatedProperty = await this.prisma.offPlanProperty.update({
             where: { id },
-            data: updateOffPlanPropertyDto,
+            data,
             include: {
                 developer: {
                     select: {
@@ -433,16 +575,26 @@ export class OffPlanPropertiesService {
                         salesManagerPhone: true,
                     },
                 },
+                createdByAgent: {
+                    select: { id: true, name: true, photoUrl: true, phone: true }
+                },
+                createdByAdmin: {
+                    select: { id: true, fullName: true, avatarUrl: true }
+                },
             },
         });
 
         if (userId) {
-            await this.activityService.create({
-                user: { connect: { id: userId } },
-                action: `Updated Off-Plan Property: ${updatedProperty.projectTitle}`,
-                ipAddress,
-                location,
-            });
+            try {
+                await this.activityService.create({
+                    user: { connect: { id: userId } },
+                    action: `Updated Off-Plan Property: ${updatedProperty.projectTitle}`,
+                    ipAddress,
+                    location,
+                });
+            } catch (err) {
+                console.warn(`Failed to create activity log for user ${userId}:`, err.message);
+            }
         }
 
         return updatedProperty;
@@ -453,12 +605,16 @@ export class OffPlanPropertiesService {
         const deleted = await this.prisma.offPlanProperty.delete({ where: { id } });
 
         if (userId) {
-            await this.activityService.create({
-                user: { connect: { id: userId } },
-                action: `Deleted Off-Plan Property: ${property.projectTitle}`,
-                ipAddress,
-                location,
-            });
+            try {
+                await this.activityService.create({
+                    user: { connect: { id: userId } },
+                    action: `Deleted Off-Plan Property: ${property.projectTitle}`,
+                    ipAddress,
+                    location,
+                });
+            } catch (err) {
+                console.warn(`Failed to create activity log for user ${userId}:`, err.message);
+            }
         }
 
         return deleted;

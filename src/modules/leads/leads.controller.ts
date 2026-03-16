@@ -36,6 +36,16 @@ export class LeadsController {
         return this.leadsService.findOne(id);
     }
 
+    @Patch(':id')
+    update(
+        @Param('id') id: string,
+        @Body() updateLeadDto: any,
+        @GetUser() user?: any,
+        @RealIp() ip?: string
+    ) {
+        return this.leadsService.update(id, updateLeadDto, user?.id, ip);
+    }
+
     @Patch(':id/responsible')
     updateResponsible(
         @Param('id') id: string,

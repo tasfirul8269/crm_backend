@@ -16,6 +16,16 @@ export class TenancyContractService {
     ) { }
 
     async create(createDto: CreateTenancyContractDto) {
+        // Verify property exists
+        if (createDto.propertyId) {
+            const propertyExists = await this.prisma.property.findUnique({
+                where: { id: createDto.propertyId }
+            });
+            if (!propertyExists) {
+                throw new NotFoundException(`Property with ID ${createDto.propertyId} not found or is an off-plan property.`);
+            }
+        }
+
         // Create DB Record
         const contract = await this.prisma.tenancyContract.create({
             data: {

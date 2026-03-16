@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UseGuards, UseInterceptors, UploadedFiles, Query, Delete, Patch, Param } from '@nestjs/common';
+import { Body, Controller, Get, Post, UseGuards, UseInterceptors, UploadedFiles, Query, Delete, Patch, Param, ForbiddenException } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { AgentsService } from './agents.service';
 import { CreateAgentDto } from './dto/create-agent.dto';
@@ -130,25 +130,35 @@ export class AgentsController {
     }
 
     @UseGuards(JwtAuthGuard, RolesGuard)
-    @Roles(Role.ADMIN)
     @Patch(':id')
     @UseInterceptors(FileFieldsInterceptor([
         { name: 'photo', maxCount: 1 },
+        { name: 'coverPhoto', maxCount: 1 },
         { name: 'vcard', maxCount: 1 },
         { name: 'licenseDocument', maxCount: 1 },
     ]))
     async update(
         @Param('id') id: string,
         @Body() updateAgentDto: UpdateAgentDto,
-        @UploadedFiles() files?: { photo?: Express.Multer.File[], vcard?: Express.Multer.File[], licenseDocument?: Express.Multer.File[] },
+        @UploadedFiles() files?: { photo?: Express.Multer.File[], coverPhoto?: Express.Multer.File[], vcard?: Express.Multer.File[], licenseDocument?: Express.Multer.File[] },
         @GetUser() user?: any,
         @RealIp() ip?: string,
     ) {
+        // Only Admins can update other agent profiles
+        // If user does not have a role, they are an Agent and can only update their own profile
+        if (user?.role !== Role.ADMIN && user?.id !== id) {
+            throw new ForbiddenException('You are only allowed to update your own profile.');
+        }
         let photoUrl: string | undefined;
         let vcardUrl: string | undefined;
+        let coverPhotoUrl: string | undefined;
 
         if (files?.photo?.[0]) {
             photoUrl = await this.uploadService.uploadFile(files.photo[0]) || undefined;
+        }
+
+        if (files?.coverPhoto?.[0]) {
+            coverPhotoUrl = await this.uploadService.uploadFile(files.coverPhoto[0]) || undefined;
         }
 
         if (files?.vcard?.[0]) {
@@ -198,7 +208,7 @@ export class AgentsController {
             licenseDocumentUrl = await this.uploadService.uploadFile(files.licenseDocument[0]) || undefined;
         }
 
-        return this.agentsService.update(id, updateAgentDto, photoUrl, vcardUrl, licenseDocumentUrl, user?.id, ip);
+        return this.agentsService.update(id, updateAgentDto, photoUrl, coverPhotoUrl, vcardUrl, licenseDocumentUrl, user?.id, ip);
     }
 
     @UseGuards(JwtAuthGuard, RolesGuard)
